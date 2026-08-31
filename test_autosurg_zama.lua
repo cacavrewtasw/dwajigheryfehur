@@ -1,4 +1,4 @@
-local is_authenticated = false
+﻿local is_authenticated = false
 local autoSurgEnabled = false
 local script_name = "AutoSurg (TEST)"
 
@@ -20,7 +20,7 @@ local function crossSendDialog(dialog)
     end
 end
 
-local auth_dialog = "set_default_color|`o\nadd_label_with_icon|big|`w" .. script_name .. " // AUTH``|left|1374|\nadd_spacer|small|\nadd_smalltext|Please enter your license key to unlock.|\nadd_spacer|small|\nadd_textbox|📢 Try typing '1234' for testing!|\nadd_spacer|small|\nadd_text_input|freekey|Secret Key:||50|\nend_dialog|test_auth_dialog|Cancel|UNLOCK ENGINE|\n"
+local auth_dialog = "set_default_color|`o\nadd_label_with_icon|big|`w" .. script_name .. " // AUTH``|left|1374|\nadd_spacer|small|\nadd_smalltext|Please enter your license key to unlock.|\nadd_spacer|small|\nadd_textbox|[TIP] Try typing '1234' for testing!|\nadd_spacer|small|\nadd_text_input|freekey|Secret Key:||50|\nend_dialog|test_auth_dialog|Cancel|UNLOCK ENGINE|\n"
 crossSendDialog(auth_dialog)
 
 local toolIds = {
