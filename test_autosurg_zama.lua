@@ -6,6 +6,7 @@ local lowSupplyItem = nil
 local currentOperatingDummy = nil
 local failedTiles = {}
 local autoWrenchRunning = false
+local wrenchSessionId = 0
 local script_name = "AutoSurg (TEST)"
 
 pcall(function() removeHook("onVariant") end)
