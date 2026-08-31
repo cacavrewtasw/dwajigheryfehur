@@ -58,6 +58,65 @@ local function HookOutgoing(a, b, c)
             crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4Invalid Key!``|left|18|\nadd_spacer|small|\nadd_smalltext|Wrong key! (Try 1234)|\nend_dialog|auth_fail|OK||\n")
         end
         return true
+        local rules = {
+            { tool = "Anesthetic",    need = { "`4The patient wakes up!",              "tool1262" } },
+            { tool = "Anesthetic",    need = { "`4The patient screams and flails!",    "tool1262" } },
+            { tool = "Defibrillator", need = { "Status: `4Heart stopped!",             "tool4312" } },
+            { tool = "Anesthetic",    need = { "Status: `6Coming to",                  "tool1262" } },
+            { tool = "Transfusion",   need = { "Pulse: `4",                            "tool4310" } },
+            { tool = "Antibiotic",    need = { "Temp: `4",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `4",                             "tool4318" } },
+            { tool = "Antibiotic",    need = { "Temp: `6",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `6",                             "tool4318" } },
+            { tool = "Antibiotic",    need = { "Temp: `3",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `3",                             "tool4318" } },
+            { tool = "Clamp",         need = { "Patient is losing blood `4very quickly!", "tool4314" } },
+            { tool = "Stitches",      need = { "Patient is losing blood `4very quickly!", "tool1270" } },
+            { tool = "Clamp",         need = { "Patient is `6losing blood!",           "tool4314" } },
+            { tool = "Stitches",      need = { "Patient is `6losing blood!",           "tool1270" } },
+            { tool = "Fix it",        need = { "tool1296" } },
+            { tool = "Fix it",        need = { "Incisions: `20",                       "tool1296" } },
+            { tool = "Fix it",        need = { "Incisions: `30",                       "tool1296" } },
+            { tool = "Ultrasound",    need = { "The patient has not been diagnosed.",  "tool4316" } },
+            { tool = "Anesthetic",    need = { "Status: `4Awake",                      "tool1262" } },
+            { tool = "Splint",        need = { "Bones: `6", " broken``",               "tool1268" } },
+            { tool = "Splint",        need = { "Bones: `4", " broken``",               "tool1268" } },
+            { tool = "Stitches",      need = { "Patient broke his arm.",               "tool1270" } },
+            { tool = "Anesthetic",    need = { "Status: `3Awake",                      "tool1262" } },
+            { tool = "Transfusion",   need = { "Pulse: `6",                            "tool4310" } },
+            { tool = "Defibrillator", need = { "The patient's heart has stopped!",    "tool4312" } },
+            { tool = "Sponge",        need = { "`4You can't see what you are doing!",  "tool1258" } },
+            { tool = "Pins",          need = { "Bones: `6", ", `6", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", ", `6", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", ", `6", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", ", `6", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `6", ", `4", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", ", `4", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", ", `4", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", ", `4", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `6", " shattered",             "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", " shattered",             "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", " shattered",             "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", " shattered",             "tool1260" } },
+            { tool = "Stitches",      need = { "Incisions: `6",                        "tool1270" } },
+            { tool = "Stitches",      need = { "Patient broke his leg.",               "tool1270" } },
+            { tool = "Clamp",         need = { "Patient is losing blood `3slowly.",   "tool4314" } },
+            { tool = "Scalpel",       need = { "tool1260" } },
+        }
+
+        for _, rule in ipairs(rules) do
+            local ok = true
+            for _, pattern in ipairs(rule.need) do
+                if not dialog:find(pattern, 1, true) then
+                    ok = false
+                    break
+                end
+            end
+            if ok then
+                useTool(rule.tool)
+                return true
+            end
+        end
     end
     return false
 end
