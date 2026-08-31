@@ -1,22 +1,12 @@
 local is_authenticated = false
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
-local modFlyEnabled = false
 local isSurgeryActive = false
 local lowSupplyItem = nil
 local currentOperatingDummy = nil
 local failedTiles = {}
 local autoWrenchRunning = false
 local script_name = "AutoSurg (TEST)"
-
-local function setModFly(state)
-    modFlyEnabled = state
-    if editToggle then
-        pcall(function() editToggle("ModFly", state) end)
-    elseif editValue then
-        pcall(function() editValue("ModFly", state) end)
-    end
-end
 
 pcall(function() removeHook("onVariant") end)
 pcall(function() removeHook("onSendPacket") end)
@@ -67,7 +57,7 @@ local function HookOutgoing(a, b, c)
 end
 
 -- ====================================
--- HELPER FUNCTIONS
+-- HELPER FUNCTIONS & AIR-MOVEMENT
 -- ====================================
 local function getPosXY()
     if pos then
@@ -105,6 +95,75 @@ local function getObjects()
     return {}
 end
 
+local function holdPosition(tx, ty)
+    local pkt = {
+        type = 0,
+        x = tx * 32,
+        y = ty * 32,
+        px = tx,
+        py = ty,
+        xspeed = 0,
+        yspeed = 0
+    }
+    if sendPacketRaw then
+        sendPacketRaw(false, pkt)
+    elseif SendPacketRaw then
+        SendPacketRaw(false, pkt)
+    end
+end
+
+-- Custom Air-Move / Fly-To (No A* pathfinding, no falling!)
+local function flyTo(targetX, targetY)
+    local p = (getLocal and getLocal()) or (GetLocal and GetLocal())
+    local currX = targetX
+    local currY = targetY
+
+    if p then
+        local rawX = p.posX or (p.pos and p.pos.x)
+        local rawY = p.posY or (p.pos and p.pos.y)
+        if rawX and rawY then
+            currX = math.floor(rawX / 32)
+            currY = math.floor(rawY / 32)
+        end
+    end
+
+    local maxSteps = 150
+    local step = 0
+
+    while (currX ~= targetX or currY ~= targetY) and step < maxSteps and autoWrenchEnabled do
+        step = step + 1
+
+        if currX < targetX then currX = currX + 1
+        elseif currX > targetX then currX = currX - 1
+        end
+
+        if currY < targetY then currY = currY + 1
+        elseif currY > targetY then currY = currY - 1
+        end
+
+        local pkt = {
+            type = 0,
+            x = currX * 32,
+            y = currY * 32,
+            px = currX,
+            py = currY,
+            xspeed = 0,
+            yspeed = 0
+        }
+
+        if sendPacketRaw then
+            sendPacketRaw(false, pkt)
+        elseif SendPacketRaw then
+            SendPacketRaw(false, pkt)
+        end
+
+        sleep(110)
+    end
+
+    holdPosition(targetX, targetY)
+    sleep(150)
+end
+
 local function collectRaw(objId, posX, posY)
     if spr then
         spr(11, objId, posX, posY)
@@ -127,21 +186,6 @@ function Collect()
     end
 end
 
-local function doFindPath(x, y)
-    if FindPath then return FindPath(x, y)
-    elseif findPath then return findPath(x, y)
-    end
-    return false
-end
-
-local function walkToTile(x, y)
-    if doFindPath(x, y) then return true end
-    if doFindPath(x, y - 1) then return true end
-    if doFindPath(x - 1, y) then return true end
-    if doFindPath(x + 1, y) then return true end
-    return false
-end
-
 local function doWrench(tx, ty)
     if wrench then
         pcall(function() wrench(tx, ty) end)
@@ -152,17 +196,13 @@ local function doWrench(tx, ty)
         return
     end
 
-    local p = (getLocal and getLocal()) or (GetLocal and GetLocal())
-    local px = p and (p.posX or (p.pos and p.pos.x)) or (tx * 32)
-    local py = p and (p.posY or (p.pos and p.pos.y)) or (ty * 32)
-
     local pkt = {
         type = 3,
         value = 32,
         px = tx,
         py = ty,
-        x = px,
-        y = py
+        x = tx * 32,
+        y = ty * 32
     }
 
     if sendPacketRaw then
@@ -235,19 +275,10 @@ local function handleLowSupply(itemToFind)
         local oy = math.floor(foundObj.posY / 32)
 
         if growtopia and growtopia.notify then
-            growtopia.notify("`2[Auto Surg-E]`o Moving to supplies at (" .. ox .. ", " .. oy .. ")")
+            growtopia.notify("`2[Auto Surg-E]`o Flying to supplies at (" .. ox .. ", " .. oy .. ")")
         end
 
-        walkToTile(ox, oy)
-
-        for i = 1, 40 do
-            local px, py = getPosXY()
-            if math.abs(px - ox) <= 2 and math.abs(py - oy) <= 2 then
-                break
-            end
-            sleep(100)
-        end
-
+        flyTo(ox, oy)
         sleep(300)
         Collect()
         sleep(500)
@@ -268,6 +299,9 @@ local function startAutoWrenchLoop()
     if autoWrenchRunning then return end
     autoWrenchRunning = true
 
+    pcall(function() sendPacket(2, "action|input\n|text|/fly\n") end)
+    pcall(function() sendPacket(2, "action|input\n|text|/modfly\n") end)
+
     local function worker()
         while autoWrenchEnabled and is_authenticated do
             if lowSupplyItem then
@@ -276,29 +310,25 @@ local function startAutoWrenchLoop()
             end
 
             if isSurgeryActive then
-                sleep(200)
+                if currentOperatingDummy then
+                    holdPosition(currentOperatingDummy.x, currentOperatingDummy.y)
+                end
+                sleep(250)
             else
                 local dummy = findNearestSurgE()
                 if not dummy then
                     sleep(1000)
                 else
-                    walkToTile(dummy.x, dummy.y)
+                    -- Fly directly to the center of Surg-E dummy
+                    flyTo(dummy.x, dummy.y)
 
-                    local reached = false
-                    for i = 1, 35 do
-                        local px, py = getPosXY()
-                        if (px == dummy.x and py == dummy.y) or (math.abs(px - dummy.x) <= 1 and math.abs(py - dummy.y) <= 1) then
-                            reached = true
-                            break
-                        end
-                        sleep(100)
-                    end
-
-                    if reached and autoWrenchEnabled then
+                    if autoWrenchEnabled then
                         sleep(200)
                         doWrench(dummy.x, dummy.y)
 
+                        -- Wait for surgery popup or low supply dialog
                         for i = 1, 30 do
+                            holdPosition(dummy.x, dummy.y)
                             if isSurgeryActive or lowSupplyItem then
                                 break
                             end
@@ -308,7 +338,8 @@ local function startAutoWrenchLoop()
                         if isSurgeryActive then
                             currentOperatingDummy = dummy
                             while isSurgeryActive and autoWrenchEnabled do
-                                sleep(200)
+                                holdPosition(dummy.x, dummy.y) -- Lock in air during surgery!
+                                sleep(250)
                                 local t = getTileAt(dummy.x, dummy.y)
                                 if t and t.fg ~= 4296 then
                                     sleep(1200)
@@ -527,22 +558,7 @@ local function zamaImGuiLoop()
                 if ImGui.Button("OFF##wrench_btn") then
                     autoWrenchEnabled = true
                     growtopia.notify("`2Auto Wrench Enabled")
-                    setModFly(true) -- Otomatis nyalakan ModFly agar tidak jatuh saat jalan
                     startAutoWrenchLoop()
-                end
-            end
-
-            ImGui.Text("ModFly (Terbang)")
-            ImGui.SameLine()
-            if modFlyEnabled then
-                if ImGui.Button("ON##fly_btn") then
-                    setModFly(false)
-                    growtopia.notify("`4ModFly Disabled")
-                end
-            else
-                if ImGui.Button("OFF##fly_btn") then
-                    setModFly(true)
-                    growtopia.notify("`2ModFly Enabled")
                 end
             end
         end
