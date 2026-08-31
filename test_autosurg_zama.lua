@@ -70,7 +70,14 @@ local toolIds = {
     ["Fix it"]        = 1296,
 }
 
+local lastToolTime = 0
+local TOOL_COOLDOWN = 600 -- ms jeda antar tool
+
 local function useTool(toolName)
+    local now = os.clock() * 1000
+    if (now - lastToolTime) < TOOL_COOLDOWN then return end
+    lastToolTime = now
+
     local itool = toolIds[toolName]
     if not itool then return end
     sendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
