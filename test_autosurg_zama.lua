@@ -58,6 +58,48 @@ local function HookOutgoing(a, b, c)
             crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4Invalid Key!``|left|18|\nadd_spacer|small|\nadd_smalltext|Wrong key! (Try 1234)|\nend_dialog|auth_fail|OK||\n")
         end
         return true
+    end
+    return false
+end
+
+function Surg(var)
+    if not is_authenticated or not autoSurgEnabled then return false end
+
+    local v1 = ""
+    local v2 = ""
+    if type(var) == "table" then
+        v1 = var[0] or var.v1 or ""
+        v2 = var[1] or var.v2 or ""
+    end
+
+    if type(v1) ~= "string" then return false end
+
+    if v1 == "OnDialogRequest" then
+        local dialog = v2
+        if type(dialog) ~= "string" then return false end
+
+        if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
+            local netID = dialog:match("netID|(%d+)")
+            if netID then
+                sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
+                return true
+            end
+        end
+
+        if dialog:find("end_dialog|surge|Cancel|Okay!|") then
+            local tilex = dialog:match("tilex|(%d+)")
+            local tiley = dialog:match("tiley|(%d+)")
+            if tilex and tiley then
+                sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. tilex .. "|\ntiley|" .. tiley .. "|")
+                return true
+            end
+        end
+
+        if (dialog:find("heart has stopped") or dialog:find("Heart stopped")) and dialog:find("tool4312") then
+            useTool("Defibrillator")
+            return true
+        end
+
         local rules = {
             { tool = "Anesthetic",    need = { "`4The patient wakes up!",              "tool1262" } },
             { tool = "Anesthetic",    need = { "`4The patient screams and flails!",    "tool1262" } },
@@ -116,47 +158,6 @@ local function HookOutgoing(a, b, c)
                 useTool(rule.tool)
                 return true
             end
-        end
-    end
-    return false
-end
-
-function Surg(var)
-    if not is_authenticated or not autoSurgEnabled then return false end
-
-    local v1 = ""
-    local v2 = ""
-    if type(var) == "table" then
-        v1 = var[0] or var.v1 or ""
-        v2 = var[1] or var.v2 or ""
-    end
-
-    if type(v1) ~= "string" then return false end
-
-    if v1 == "OnDialogRequest" then
-        local dialog = v2
-        if type(dialog) ~= "string" then return false end
-
-        if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
-            local netID = dialog:match("netID|(%d+)")
-            if netID then
-                sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
-                return true
-            end
-        end
-
-        if dialog:find("end_dialog|surge|Cancel|Okay!|") then
-            local tilex = dialog:match("tilex|(%d+)")
-            local tiley = dialog:match("tiley|(%d+)")
-            if tilex and tiley then
-                sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. tilex .. "|\ntiley|" .. tiley .. "|")
-                return true
-            end
-        end
-
-        if (dialog:find("heart has stopped") or dialog:find("Heart stopped")) and dialog:find("tool4312") then
-            useTool("Defibrillator")
-            return true
         end
     end
     return false
