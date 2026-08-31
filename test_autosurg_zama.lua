@@ -71,7 +71,7 @@ local toolIds = {
 }
 
 local lastToolTime = 0
-local TOOL_COOLDOWN = 600 -- ms jeda antar tool
+local TOOL_COOLDOWN = 60 -- ms jeda antar tool
 
 local function useTool(toolName)
     local now = os.clock() * 1000
