@@ -62,21 +62,29 @@ local function HookOutgoing(a, b, c)
     return false
 end
 
-function Surg(var)
+function Surg(var, b, c)
     if not is_authenticated or not autoSurgEnabled then return false end
 
-    local v1 = ""
-    local v2 = ""
-    if type(var) == "table" then
-        v1 = var[0] or var.v1 or ""
-        v2 = var[1] or var.v2 or ""
+    local dialog = ""
+    
+    if type(var) == "string" and var:find("OnDialogRequest") then
+        dialog = var
+    elseif type(b) == "string" and b:find("OnDialogRequest") then
+        dialog = b
+    elseif type(c) == "string" and c:find("OnDialogRequest") then
+        dialog = c
+    elseif type(var) == "table" then
+        for k, v in pairs(var) do
+            if type(v) == "string" and v == "OnDialogRequest" then
+                if type(k) == "number" and var[k+1] and type(var[k+1]) == "string" then
+                    dialog = var[k+1]
+                end
+                break
+            end
+        end
     end
 
-    if type(v1) ~= "string" then return false end
-
-    if v1 == "OnDialogRequest" then
-        local dialog = v2
-        if type(dialog) ~= "string" then return false end
+    if dialog ~= "" then
 
         if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
             local netID = dialog:match("netID|(%d+)")
