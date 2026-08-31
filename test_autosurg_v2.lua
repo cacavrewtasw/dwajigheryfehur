@@ -290,6 +290,19 @@ local function handleLowSupply(itemToFind, session)
     end
 end
 
+local function enableFly(state)
+    if editToggle then pcall(function() editToggle("ModFly", state) end) end
+    if EditToggle then pcall(function() EditToggle("ModFly", state) end) end
+    if editValue then pcall(function() editValue("ModFly", state) end) end
+    if EditValue then pcall(function() EditValue("ModFly", state) end) end
+    if setValue then pcall(function() setValue("ModFly", state) end) end
+    if SetValue then pcall(function() SetValue("ModFly", state) end) end
+    if state then
+        pcall(function() sendPacket(2, "action|input\n|text|/fly\n") end)
+        pcall(function() sendPacket(2, "action|input\n|text|/modfly\n") end)
+    end
+end
+
 -- ====================================
 -- AUTO WRENCH THREAD LOOP
 -- ====================================
@@ -301,8 +314,7 @@ local function startAutoWrenchLoop()
     lowSupplyItem = nil
     failedTiles = {}
 
-    pcall(function() sendPacket(2, "action|input\n|text|/fly\n") end)
-    pcall(function() sendPacket(2, "action|input\n|text|/modfly\n") end)
+    enableFly(true)
 
     local function worker()
         while autoWrenchEnabled and is_authenticated and (wrenchSessionId == currentSession) do
@@ -564,6 +576,7 @@ local function zamaImGuiLoop()
                     currentOperatingDummy = nil
                     lowSupplyItem = nil
                     wrenchSessionId = (wrenchSessionId or 0) + 1
+                    enableFly(false)
                     growtopia.notify("`4Auto Wrench Disabled")
                 end
             else
