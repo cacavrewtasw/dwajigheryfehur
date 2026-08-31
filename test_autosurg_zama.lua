@@ -112,8 +112,10 @@ local function holdPosition(tx, ty)
     end
 end
 
+local wrenchSessionId = 0
+
 -- Custom Air-Move / Fly-To (No A* pathfinding, no falling!)
-local function flyTo(targetX, targetY)
+local function flyTo(targetX, targetY, session)
     local p = (getLocal and getLocal()) or (GetLocal and GetLocal())
     local currX = targetX
     local currY = targetY
@@ -130,7 +132,7 @@ local function flyTo(targetX, targetY)
     local maxSteps = 150
     local step = 0
 
-    while (currX ~= targetX or currY ~= targetY) and step < maxSteps and autoWrenchEnabled do
+    while (currX ~= targetX or currY ~= targetY) and step < maxSteps and autoWrenchEnabled and (not session or wrenchSessionId == session) do
         step = step + 1
 
         if currX < targetX then currX = currX + 1
@@ -160,8 +162,10 @@ local function flyTo(targetX, targetY)
         sleep(110)
     end
 
-    holdPosition(targetX, targetY)
-    sleep(150)
+    if autoWrenchEnabled and (not session or wrenchSessionId == session) then
+        holdPosition(targetX, targetY)
+        sleep(150)
+    end
 end
 
 local function collectRaw(objId, posX, posY)
@@ -255,7 +259,7 @@ local function findNearestSurgE()
     return nearest
 end
 
-local function handleLowSupply(itemToFind)
+local function handleLowSupply(itemToFind, session)
     local targetId = getItemIdByName(itemToFind or "Surgical Stitches")
 
     if growtopia and growtopia.notify then
@@ -278,7 +282,7 @@ local function handleLowSupply(itemToFind)
             growtopia.notify("`2[Auto Surg-E]`o Flying to supplies at (" .. ox .. ", " .. oy .. ")")
         end
 
-        flyTo(ox, oy)
+        flyTo(ox, oy, session)
         sleep(300)
         Collect()
         sleep(500)
@@ -296,16 +300,20 @@ end
 -- AUTO WRENCH THREAD LOOP
 -- ====================================
 local function startAutoWrenchLoop()
-    if autoWrenchRunning then return end
-    autoWrenchRunning = true
+    wrenchSessionId = wrenchSessionId + 1
+    local currentSession = wrenchSessionId
+    isSurgeryActive = false
+    currentOperatingDummy = nil
+    lowSupplyItem = nil
+    failedTiles = {}
 
     pcall(function() sendPacket(2, "action|input\n|text|/fly\n") end)
     pcall(function() sendPacket(2, "action|input\n|text|/modfly\n") end)
 
     local function worker()
-        while autoWrenchEnabled and is_authenticated do
+        while autoWrenchEnabled and is_authenticated and (wrenchSessionId == currentSession) do
             if lowSupplyItem then
-                handleLowSupply(lowSupplyItem)
+                handleLowSupply(lowSupplyItem, currentSession)
                 lowSupplyItem = nil
             end
 
@@ -319,30 +327,37 @@ local function startAutoWrenchLoop()
                 if not dummy then
                     sleep(1000)
                 else
-                    -- Fly directly to the center of Surg-E dummy
-                    flyTo(dummy.x, dummy.y)
+                    flyTo(dummy.x, dummy.y, currentSession)
 
-                    if autoWrenchEnabled then
+                    if autoWrenchEnabled and (wrenchSessionId == currentSession) then
                         sleep(200)
                         doWrench(dummy.x, dummy.y)
 
                         -- Wait for surgery popup or low supply dialog
                         for i = 1, 30 do
                             holdPosition(dummy.x, dummy.y)
-                            if isSurgeryActive or lowSupplyItem then
+                            if isSurgeryActive or lowSupplyItem or not autoWrenchEnabled or (wrenchSessionId ~= currentSession) then
                                 break
                             end
                             sleep(100)
                         end
 
-                        if isSurgeryActive then
+                        if isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) then
                             currentOperatingDummy = dummy
-                            while isSurgeryActive and autoWrenchEnabled do
-                                holdPosition(dummy.x, dummy.y) -- Lock in air during surgery!
-                                sleep(250)
+                            local waitTimeout = 0
+                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) do
+                                holdPosition(dummy.x, dummy.y)
+                                sleep(200)
+                                waitTimeout = waitTimeout + 1
+
                                 local t = getTileAt(dummy.x, dummy.y)
                                 if t and t.fg ~= 4296 then
-                                    sleep(1200)
+                                    sleep(1000)
+                                    isSurgeryActive = false
+                                    break
+                                end
+
+                                if waitTimeout > 300 then
                                     isSurgeryActive = false
                                     break
                                 end
@@ -357,7 +372,6 @@ local function startAutoWrenchLoop()
             end
             sleep(100)
         end
-        autoWrenchRunning = false
     end
 
     if runThread then
@@ -552,6 +566,10 @@ local function zamaImGuiLoop()
             if autoWrenchEnabled then
                 if ImGui.Button("ON##wrench_btn") then
                     autoWrenchEnabled = false
+                    isSurgeryActive = false
+                    currentOperatingDummy = nil
+                    lowSupplyItem = nil
+                    wrenchSessionId = wrenchSessionId + 1
                     growtopia.notify("`4Auto Wrench Disabled")
                 end
             else
