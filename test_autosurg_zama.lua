@@ -1,12 +1,22 @@
 local is_authenticated = false
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
+local modFlyEnabled = false
 local isSurgeryActive = false
 local lowSupplyItem = nil
 local currentOperatingDummy = nil
 local failedTiles = {}
 local autoWrenchRunning = false
 local script_name = "AutoSurg (TEST)"
+
+local function setModFly(state)
+    modFlyEnabled = state
+    if editToggle then
+        pcall(function() editToggle("ModFly", state) end)
+    elseif editValue then
+        pcall(function() editValue("ModFly", state) end)
+    end
+end
 
 pcall(function() removeHook("onVariant") end)
 pcall(function() removeHook("onSendPacket") end)
@@ -517,7 +527,22 @@ local function zamaImGuiLoop()
                 if ImGui.Button("OFF##wrench_btn") then
                     autoWrenchEnabled = true
                     growtopia.notify("`2Auto Wrench Enabled")
+                    setModFly(true) -- Otomatis nyalakan ModFly agar tidak jatuh saat jalan
                     startAutoWrenchLoop()
+                end
+            end
+
+            ImGui.Text("ModFly (Terbang)")
+            ImGui.SameLine()
+            if modFlyEnabled then
+                if ImGui.Button("ON##fly_btn") then
+                    setModFly(false)
+                    growtopia.notify("`4ModFly Disabled")
+                end
+            else
+                if ImGui.Button("OFF##fly_btn") then
+                    setModFly(true)
+                    growtopia.notify("`2ModFly Enabled")
                 end
             end
         end
