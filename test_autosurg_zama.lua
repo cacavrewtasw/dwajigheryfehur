@@ -1,4 +1,4 @@
-﻿local is_authenticated = false
+local is_authenticated = false
 local autoSurgEnabled = false
 local script_name = "AutoSurg (TEST)"
 
