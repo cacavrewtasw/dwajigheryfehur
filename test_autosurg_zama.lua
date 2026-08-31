@@ -112,59 +112,52 @@ local function holdPosition(tx, ty)
     end
 end
 
-local wrenchSessionId = 0
+local function hoverAt(tx, ty)
+    local px = tx * 32
+    local py = ty * 32
 
--- Custom Air-Move / Fly-To (No A* pathfinding, no falling!)
-local function flyTo(targetX, targetY, session)
-    local p = (getLocal and getLocal()) or (GetLocal and GetLocal())
-    local currX = targetX
-    local currY = targetY
-
-    if p then
-        local rawX = p.posX or (p.pos and p.pos.x)
-        local rawY = p.posY or (p.pos and p.pos.y)
-        if rawX and rawY then
-            currX = math.floor(rawX / 32)
-            currY = math.floor(rawY / 32)
-        end
+    if sendVariant then
+        pcall(function() sendVariant({ v1 = "OnSetPos", v2 = { px, py } }) end)
+        pcall(function() sendVariant({ [0] = "OnSetPos", [1] = { px, py } }) end)
+        pcall(function() sendVariant({ "OnSetPos", { px, py } }) end)
     end
 
-    local maxSteps = 150
-    local step = 0
+    local pkt = {
+        type = 0,
+        x = px,
+        y = py,
+        px = tx,
+        py = ty,
+        xspeed = 0,
+        yspeed = 0
+    }
+    if sendPacketRaw then sendPacketRaw(false, pkt)
+    elseif SendPacketRaw then SendPacketRaw(false, pkt)
+    end
+end
 
-    while (currX ~= targetX or currY ~= targetY) and step < maxSteps and autoWrenchEnabled and (not session or wrenchSessionId == session) do
-        step = step + 1
-
-        if currX < targetX then currX = currX + 1
-        elseif currX > targetX then currX = currX - 1
-        end
-
-        if currY < targetY then currY = currY + 1
-        elseif currY > targetY then currY = currY - 1
-        end
-
-        local pkt = {
-            type = 0,
-            x = currX * 32,
-            y = currY * 32,
-            px = currX,
-            py = currY,
-            xspeed = 0,
-            yspeed = 0
-        }
-
-        if sendPacketRaw then
-            sendPacketRaw(false, pkt)
-        elseif SendPacketRaw then
-            SendPacketRaw(false, pkt)
-        end
-
-        sleep(110)
+local function goToDummy(tx, ty, session)
+    local ok = false
+    if FindPath then
+        pcall(function() ok = FindPath(tx, ty) end)
+    elseif findPath then
+        pcall(function() ok = findPath(tx, ty) end)
     end
 
-    if autoWrenchEnabled and (not session or wrenchSessionId == session) then
-        holdPosition(targetX, targetY)
-        sleep(150)
+    if not ok then
+        -- FindPath failed (floating dummy) -> teleport visually & packet directly to center
+        hoverAt(tx, ty)
+        sleep(200)
+    else
+        for i = 1, 25 do
+            local px, py = getPosXY()
+            if (px == tx and py == ty) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
+                break
+            end
+            sleep(100)
+        end
+        hoverAt(tx, ty)
+        sleep(100)
     end
 end
 
@@ -282,7 +275,7 @@ local function handleLowSupply(itemToFind, session)
             growtopia.notify("`2[Auto Surg-E]`o Flying to supplies at (" .. ox .. ", " .. oy .. ")")
         end
 
-        flyTo(ox, oy, session)
+        goToDummy(ox, oy, session)
         sleep(300)
         Collect()
         sleep(500)
@@ -319,15 +312,15 @@ local function startAutoWrenchLoop()
 
             if isSurgeryActive then
                 if currentOperatingDummy then
-                    holdPosition(currentOperatingDummy.x, currentOperatingDummy.y)
+                    hoverAt(currentOperatingDummy.x, currentOperatingDummy.y)
                 end
-                sleep(250)
+                sleep(200)
             else
                 local dummy = findNearestSurgE()
                 if not dummy then
                     sleep(1000)
                 else
-                    flyTo(dummy.x, dummy.y, currentSession)
+                    goToDummy(dummy.x, dummy.y, currentSession)
 
                     if autoWrenchEnabled and (wrenchSessionId == currentSession) then
                         sleep(200)
@@ -335,7 +328,7 @@ local function startAutoWrenchLoop()
 
                         -- Wait for surgery popup or low supply dialog
                         for i = 1, 30 do
-                            holdPosition(dummy.x, dummy.y)
+                            hoverAt(dummy.x, dummy.y)
                             if isSurgeryActive or lowSupplyItem or not autoWrenchEnabled or (wrenchSessionId ~= currentSession) then
                                 break
                             end
@@ -346,7 +339,7 @@ local function startAutoWrenchLoop()
                             currentOperatingDummy = dummy
                             local waitTimeout = 0
                             while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) do
-                                holdPosition(dummy.x, dummy.y)
+                                hoverAt(dummy.x, dummy.y)
                                 sleep(200)
                                 waitTimeout = waitTimeout + 1
 
