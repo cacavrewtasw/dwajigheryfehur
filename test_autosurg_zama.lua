@@ -16,32 +16,16 @@ local function crossSendDialog(dialog)
         growtopia.sendDialog(dialog)
     elseif sendVariant then
         pcall(function() sendVariant({v1 = "OnDialogRequest", v2 = dialog}) end)
-        pcall(function() sendVariant({"OnDialogRequest", dialog}) end)
     end
 end
 
 local auth_dialog = "set_default_color|`o\nadd_label_with_icon|big|`w" .. script_name .. " // AUTH``|left|1374|\nadd_spacer|small|\nadd_smalltext|Please enter your license key to unlock.|\nadd_spacer|small|\nadd_textbox|[TIP] Try typing '1234' for testing!|\nadd_spacer|small|\nadd_text_input|freekey|Secret Key:||50|\nend_dialog|test_auth_dialog|Cancel|UNLOCK ENGINE|\n"
 crossSendDialog(auth_dialog)
 
-local toolIds = {
-    ["Sponge"] = 1258, ["Splint"] = 1268, ["Antibiotic"] = 1266, ["Anesthetic"] = 1262,
-    ["Scalpel"] = 1260, ["Stitches"] = 1270, ["Lab kit"] = 4318, ["Pins"] = 4308,
-    ["Clamp"] = 4314, ["Transfusion"] = 4310, ["Ultrasound"] = 4316, ["Defibrillator"] = 4312,
-    ["Fix it"] = 1296,
-}
-
-local function useTool(toolName)
-    local itool = toolIds[toolName]
-    if not itool then return end
-    sendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
-    if growtopia and growtopia.notify then growtopia.notify("`9[`cTools`9] `c" .. toolName) end
-end
-
 -- ====================================
 -- HOOK OUTGOING (AUTH)
 -- ====================================
 local function HookOutgoing(a, b, c)
-    -- Growlauncher sends packet as first arg (string)
     local pkt = ""
     if type(a) == "string" then pkt = a
     elseif type(b) == "string" then pkt = b
@@ -68,100 +52,120 @@ local function HookOutgoing(a, b, c)
 end
 
 -- ====================================
--- HOOK INCOMING VARIANT (SURG)
+-- AUTO SURG (TIDAK DIUBAH)
 -- ====================================
-local function Surg(var)
+local toolIds = {
+    ["Sponge"]        = 1258,
+    ["Splint"]        = 1268,
+    ["Antibiotic"]    = 1266,
+    ["Anesthetic"]    = 1262,
+    ["Scalpel"]       = 1260,
+    ["Stitches"]      = 1270,
+    ["Lab kit"]       = 4318,
+    ["Pins"]          = 4308,
+    ["Clamp"]         = 4314,
+    ["Transfusion"]   = 4310,
+    ["Ultrasound"]    = 4316,
+    ["Defibrillator"] = 4312,
+    ["Fix it"]        = 1296,
+}
+
+local function useTool(toolName)
+    local itool = toolIds[toolName]
+    if not itool then return end
+    sendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
+    growtopia.notify("`9[`cTools`9] `c" .. toolName)
+end
+
+function onVariant(var, pkt)
+    -- Auth + toggle check
     if not is_authenticated or not autoSurgEnabled then return false end
 
-    -- Growlauncher variant format: var.v1 = name, var.v2 = content
-    local v1 = ""
-    local v2 = ""
-
-    if type(var) == "table" then
-        v1 = tostring(var.v1 or var[1] or "")
-        v2 = tostring(var.v2 or var[2] or "")
-    elseif type(var) == "userdata" then
-        pcall(function() v1 = tostring(var.v1) end)
-        pcall(function() v2 = tostring(var.v2) end)
+    if type(var.v1) ~= "string" then
+        return true
     end
 
-    if v1 ~= "OnDialogRequest" or v2 == "" then return false end
+    if var.v1 == "OnDialogRequest" then
+        local dialog = var.v2
+        if type(dialog) ~= "string" then return true end
 
-    local dialog = v2
-
-    if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
-        local netID = dialog:match("netID|(%d+)")
-        if netID then
+        if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
+            local netID = dialog:match("netID|(%d+)")
             sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
             return true
         end
-    end
 
-    if dialog:find("end_dialog|surge|Cancel|Okay!|") then
-        local tilex = dialog:match("tilex|(%d+)")
-        local tiley = dialog:match("tiley|(%d+)")
-        if tilex and tiley then
+        if dialog:find("end_dialog|surge|Cancel|Okay!|") then
+            local tilex = dialog:match("tilex|(%d+)")
+            local tiley = dialog:match("tiley|(%d+)")
             sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. tilex .. "|\ntiley|" .. tiley .. "|")
             return true
         end
-    end
 
-    local rules = {
-        { tool = "Anesthetic",    need = { "`4The patient wakes up!",              "tool1262" } },
-        { tool = "Anesthetic",    need = { "`4The patient screams and flails!",    "tool1262" } },
-        { tool = "Defibrillator", need = { "Status: `4Heart stopped!",             "tool4312" } },
-        { tool = "Anesthetic",    need = { "Status: `6Coming to",                  "tool1262" } },
-        { tool = "Transfusion",   need = { "Pulse: `4",                            "tool4310" } },
-        { tool = "Antibiotic",    need = { "Temp: `4",                             "tool1266" } },
-        { tool = "Lab kit",       need = { "Temp: `4",                             "tool4318" } },
-        { tool = "Antibiotic",    need = { "Temp: `6",                             "tool1266" } },
-        { tool = "Lab kit",       need = { "Temp: `6",                             "tool4318" } },
-        { tool = "Antibiotic",    need = { "Temp: `3",                             "tool1266" } },
-        { tool = "Lab kit",       need = { "Temp: `3",                             "tool4318" } },
-        { tool = "Clamp",         need = { "Patient is losing blood `4very quickly!", "tool4314" } },
-        { tool = "Stitches",      need = { "Patient is losing blood `4very quickly!", "tool1270" } },
-        { tool = "Clamp",         need = { "Patient is `6losing blood!",           "tool4314" } },
-        { tool = "Stitches",      need = { "Patient is `6losing blood!",           "tool1270" } },
-        { tool = "Fix it",        need = { "Incisions: `20",                       "tool1296" } },
-        { tool = "Fix it",        need = { "Incisions: `30",                       "tool1296" } },
-        { tool = "Ultrasound",    need = { "The patient has not been diagnosed.",  "tool4316" } },
-        { tool = "Anesthetic",    need = { "Status: `4Awake",                      "tool1262" } },
-        { tool = "Splint",        need = { "Bones: `6", " broken``",               "tool1268" } },
-        { tool = "Splint",        need = { "Bones: `4", " broken``",               "tool1268" } },
-        { tool = "Stitches",      need = { "Patient broke his arm.",               "tool1270" } },
-        { tool = "Anesthetic",    need = { "Status: `3Awake",                      "tool1262" } },
-        { tool = "Transfusion",   need = { "Pulse: `6",                            "tool4310" } },
-        { tool = "Defibrillator", need = { "The patient's heart has stopped!",    "tool4312" } },
-        { tool = "Sponge",        need = { "`4You can't see what you are doing!",  "tool1258" } },
-        { tool = "Defibrillator", need = { "heart has stopped",                    "tool4312" } },
-        { tool = "Pins",          need = { "Bones: `6", ", `6", " shattered",     "tool4308" } },
-        { tool = "Scalpel",       need = { "Bones: `6", ", `6", " shattered",     "tool1260" } },
-        { tool = "Pins",          need = { "Bones: `4", ", `6", " shattered",     "tool4308" } },
-        { tool = "Scalpel",       need = { "Bones: `4", ", `6", " shattered",     "tool1260" } },
-        { tool = "Pins",          need = { "Bones: `6", ", `4", " shattered",     "tool4308" } },
-        { tool = "Scalpel",       need = { "Bones: `6", ", `4", " shattered",     "tool1260" } },
-        { tool = "Pins",          need = { "Bones: `4", ", `4", " shattered",     "tool4308" } },
-        { tool = "Scalpel",       need = { "Bones: `4", ", `4", " shattered",     "tool1260" } },
-        { tool = "Pins",          need = { "Bones: `6", " shattered",             "tool4308" } },
-        { tool = "Scalpel",       need = { "Bones: `6", " shattered",             "tool1260" } },
-        { tool = "Pins",          need = { "Bones: `4", " shattered",             "tool4308" } },
-        { tool = "Scalpel",       need = { "Bones: `4", " shattered",             "tool1260" } },
-        { tool = "Stitches",      need = { "Incisions: `6",                        "tool1270" } },
-        { tool = "Stitches",      need = { "Patient broke his leg.",               "tool1270" } },
-        { tool = "Clamp",         need = { "Patient is losing blood `3slowly.",   "tool4314" } },
-        { tool = "Scalpel",       need = { "tool1260" } },
-    }
-
-    for _, rule in ipairs(rules) do
-        local ok = true
-        for _, pattern in ipairs(rule.need) do
-            if not dialog:find(pattern, 1, true) then
-                ok = false; break
-            end
-        end
-        if ok then
-            useTool(rule.tool)
+        if (dialog:find("heart has stopped") or dialog:find("Heart stopped")) and dialog:find("tool4312") then
+            sleep(50)
+            useTool("Defibrillator")
             return true
+        end
+
+        local rules = {
+            { tool = "Anesthetic",    need = { "`4The patient wakes up!",              "tool1262" } },
+            { tool = "Anesthetic",    need = { "`4The patient screams and flails!",    "tool1262" } },
+            { tool = "Defibrillator", need = { "Status: `4Heart stopped!",             "tool4312" } },
+            { tool = "Anesthetic",    need = { "Status: `6Coming to",                  "tool1262" } },
+            { tool = "Transfusion",   need = { "Pulse: `4",                            "tool4310" } },
+            { tool = "Antibiotic",    need = { "Temp: `4",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `4",                             "tool4318" } },
+            { tool = "Antibiotic",    need = { "Temp: `6",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `6",                             "tool4318" } },
+            { tool = "Antibiotic",    need = { "Temp: `3",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `3",                             "tool4318" } },
+            { tool = "Clamp",         need = { "Patient is losing blood `4very quickly!", "tool4314" } },
+            { tool = "Stitches",      need = { "Patient is losing blood `4very quickly!", "tool1270" } },
+            { tool = "Clamp",         need = { "Patient is `6losing blood!",           "tool4314" } },
+            { tool = "Stitches",      need = { "Patient is `6losing blood!",           "tool1270" } },
+            { tool = "Fix it",        need = { "tool1296" } },
+            { tool = "Fix it",        need = { "Incisions: `20",                       "tool1296" } },
+            { tool = "Fix it",        need = { "Incisions: `30",                       "tool1296" } },
+            { tool = "Ultrasound",    need = { "The patient has not been diagnosed.",  "tool4316" } },
+            { tool = "Anesthetic",    need = { "Status: `4Awake",                      "tool1262" } },
+            { tool = "Splint",        need = { "Bones: `6", " broken``",               "tool1268" } },
+            { tool = "Splint",        need = { "Bones: `4", " broken``",               "tool1268" } },
+            { tool = "Stitches",      need = { "Patient broke his arm.",               "tool1270" } },
+            { tool = "Anesthetic",    need = { "Status: `3Awake",                      "tool1262" } },
+            { tool = "Transfusion",   need = { "Pulse: `6",                            "tool4310" } },
+            { tool = "Defibrillator", need = { "The patient's heart has stopped!",    "tool4312" } },
+            { tool = "Sponge",        need = { "`4You can't see what you are doing!",  "tool1258" } },
+            { tool = "Pins",          need = { "Bones: `6", ", `6", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", ", `6", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", ", `6", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", ", `6", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `6", ", `4", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", ", `4", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", ", `4", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", ", `4", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `6", " shattered",             "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", " shattered",             "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", " shattered",             "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", " shattered",             "tool1260" } },
+            { tool = "Stitches",      need = { "Incisions: `6",                        "tool1270" } },
+            { tool = "Stitches",      need = { "Patient broke his leg.",               "tool1270" } },
+            { tool = "Clamp",         need = { "Patient is losing blood `3slowly.",   "tool4314" } },
+            { tool = "Scalpel",       need = { "tool1260" } },
+        }
+
+        for _, rule in ipairs(rules) do
+            local ok = true
+            for _, pattern in ipairs(rule.need) do
+                if not dialog:find(pattern, 1, true) then
+                    ok = false
+                    break
+                end
+            end
+            if ok then
+                useTool(rule.tool)
+                return true
+            end
         end
     end
 
@@ -170,7 +174,7 @@ end
 
 -- Register hooks
 if addHook then
-    pcall(function() addHook(Surg, "onVariant") end)
+    pcall(function() addHook(onVariant, "onVariant") end)
     pcall(function() addHook(HookOutgoing, "onSendPacket") end)
 end
 
@@ -188,12 +192,12 @@ local function zamaImGuiLoop()
             if autoSurgEnabled then
                 if ImGui.Button("ON") then
                     autoSurgEnabled = false
-                    if growtopia and growtopia.notify then growtopia.notify("`4AutoSurg Disabled") end
+                    growtopia.notify("`4AutoSurg Disabled")
                 end
             else
                 if ImGui.Button("OFF") then
                     autoSurgEnabled = true
-                    if growtopia and growtopia.notify then growtopia.notify("`2AutoSurg Enabled") end
+                    growtopia.notify("`2AutoSurg Enabled")
                 end
             end
         end
