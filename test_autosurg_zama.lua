@@ -294,7 +294,7 @@ end
 -- AUTO WRENCH THREAD LOOP
 -- ====================================
 local function startAutoWrenchLoop()
-    wrenchSessionId = wrenchSessionId + 1
+    wrenchSessionId = (wrenchSessionId or 0) + 1
     local currentSession = wrenchSessionId
     isSurgeryActive = false
     currentOperatingDummy = nil
@@ -563,7 +563,7 @@ local function zamaImGuiLoop()
                     isSurgeryActive = false
                     currentOperatingDummy = nil
                     lowSupplyItem = nil
-                    wrenchSessionId = wrenchSessionId + 1
+                    wrenchSessionId = (wrenchSessionId or 0) + 1
                     growtopia.notify("`4Auto Wrench Disabled")
                 end
             else
