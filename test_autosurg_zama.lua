@@ -1,21 +1,13 @@
--- ==========================================
--- TEST SCRIPT: GT Dialog Auth + ImGui AutoSurg
--- ==========================================
-
 local is_authenticated = false
 local show_surg_ui = false
 local autoSurgEnabled = false
 local script_name = "AutoSurg (TEST)"
 
--- Simulasi Verifikasi (Karena ini cuma test)
 local function verifyKey(key)
     if key == "1234" then return true end
     return false
 end
 
--- ==========================================
--- Helper Fungsi Dialog
--- ==========================================
 local function crossSendDialog(dialog)
     if growtopia and growtopia.sendDialog then
         growtopia.sendDialog(dialog)
@@ -25,14 +17,11 @@ local function crossSendDialog(dialog)
     end
 end
 
--- Tampilkan Dialog Auth saat script pertama kali jalan
 local auth_dialog = "set_default_color|`o\nadd_label_with_icon|big|`w" .. script_name .. " // AUTH``|left|1374|\nadd_spacer|small|\nadd_smalltext|Please enter your license key to unlock.|\nadd_spacer|small|\nadd_textbox|📢 Try typing '1234' for testing!|\nadd_spacer|small|\nadd_text_input|freekey|Secret Key:||50|\nend_dialog|test_auth_dialog|Cancel|UNLOCK ENGINE|\n"
 crossSendDialog(auth_dialog)
 
--- ==========================================
--- AutoSurg Logic
--- ==========================================
 pcall(function() removeHook("onVariant") end)
+pcall(function() removeHook("onSendPacket") end)
 
 local toolIds = {
     ["Sponge"] = 1258, ["Splint"] = 1268, ["Antibiotic"] = 1266, ["Anesthetic"] = 1262,
@@ -48,14 +37,17 @@ local function useTool(toolName)
     if growtopia and growtopia.notify then growtopia.notify("`9[`cTools`9] `c" .. toolName) end
 end
 
-function Surg(var, pkt)
-    -- Tangkap response dialog AUTH
-    local packet = ""
-    if type(var) == "string" then packet = var end
-    if type(var) == "table" and var[0] and var[0]:find("action|dialog_return") then packet = var[0] end
+-- ================================
+-- HOOK OUTGOING PACKET (AUTH)
+-- ================================
+local function HookOutgoing(a, b, c)
+    local pkt = ""
+    if type(a) == "string" then pkt = a end
+    if type(b) == "string" then pkt = b end
+    if type(c) == "string" then pkt = c end
 
-    if pkt and pkt:find("test_auth_dialog") or (type(var) == "string" and var:find("test_auth_dialog")) then
-        local key = (pkt or var):match("freekey|([^%c]+)")
+    if pkt:find("test_auth_dialog") then
+        local key = pkt:match("freekey|([^%c]+)")
         if not key or key == "" then
             crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4No Key Entered!``|left|18|\nadd_spacer|small|\nadd_smalltext|You did not enter a key. Please try again.|\nend_dialog|auth_fail|OK||\n")
             return true
@@ -71,11 +63,15 @@ function Surg(var, pkt)
         end
         return true
     end
+    return false
+end
 
-    -- JIKA BELUM AUTH ATAU TOMBOL OFF, JANGAN LAKUKAN SURGERY!
+-- ================================
+-- HOOK INCOMING VARIANT (SURG)
+-- ================================
+function Surg(var)
     if not is_authenticated or not autoSurgEnabled then return false end
 
-    -- Deteksi format Growlauncher / Genta
     local v1 = ""
     local v2 = ""
     if type(var) == "table" then
@@ -91,15 +87,19 @@ function Surg(var, pkt)
 
         if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
             local netID = dialog:match("netID|(%d+)")
-            sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
-            return true
+            if netID then
+                sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
+                return true
+            end
         end
 
         if dialog:find("end_dialog|surge|Cancel|Okay!|") then
             local tilex = dialog:match("tilex|(%d+)")
             local tiley = dialog:match("tiley|(%d+)")
-            sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. tilex .. "|\ntiley|" .. tiley .. "|")
-            return true
+            if tilex and tiley then
+                sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. tilex .. "|\ntiley|" .. tiley .. "|")
+                return true
+            end
         end
 
         if (dialog:find("heart has stopped") or dialog:find("Heart stopped")) and dialog:find("tool4312") then
@@ -169,16 +169,6 @@ function Surg(var, pkt)
     return false
 end
 
--- GROWLAUNCHER hook packet text
-local function HookOutgoing(a, b, c)
-    local pkt = ""
-    if type(a) == "string" then pkt = a end
-    if pkt:find("test_auth_dialog") then
-        return Surg(a, pkt)
-    end
-    return false
-end
-
 if addHook then
     pcall(function() addHook(Surg, "onVariant") end)
     pcall(function() addHook(HookOutgoing, "onSendPacket") end)
@@ -188,13 +178,11 @@ end
 -- IMGUI INTERFACE
 -- ==========================================
 function zamaImGuiLoop(deltaTime)
-    -- MAIN AUTOSURG WINDOW
     if show_surg_ui then
         if ImGui.Begin("Auto Surg by zama10", true) then
             ImGui.Text("Auto Surg")
             ImGui.SameLine()
             
-            -- Tombol Toggle ON / OFF
             if autoSurgEnabled then
                 if ImGui.Button("ON##surg_toggle") then
                     autoSurgEnabled = false
@@ -212,10 +200,8 @@ function zamaImGuiLoop(deltaTime)
     end
 end
 
--- Daftarkan hook ImGui
 if addHook then
     pcall(function() addHook(zamaImGuiLoop, "onDrawImGui") end)
 end
 
--- Execute hook (Growlauncher butuh ini)
 if applyHook then pcall(applyHook) end
