@@ -23,7 +23,7 @@ local auth_dialog = "set_default_color|`o\nadd_label_with_icon|big|`w" .. script
 crossSendDialog(auth_dialog)
 
 -- ====================================
--- HOOK OUTGOING (AUTH)
+-- HOOK OUTGOING (AUTH) - only intercept dialog_return from auth
 -- ====================================
 local function HookOutgoing(a, b, c)
     local pkt = ""
@@ -32,23 +32,23 @@ local function HookOutgoing(a, b, c)
     elseif type(c) == "string" then pkt = c
     end
 
-    if pkt:find("test_auth_dialog") then
-        local key = pkt:match("freekey|([^\n\r]+)")
-        if not key or key == "" then
-            crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4No Key Entered!``|left|18|\nadd_spacer|small|\nadd_smalltext|You did not enter a key. Please try again.|\nend_dialog|auth_fail|OK||\n")
-            return true
-        end
-        key = key:match("^%s*(.-)%s*$")
+    -- ONLY handle our specific auth dialog, ignore surgery packets
+    if not pkt:find("test_auth_dialog") then return false end
 
-        if verifyKey(key) then
-            crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`2Key Accepted!``|left|18|\nadd_spacer|small|\nadd_smalltext|Welcome to AutoSurg! Menu is now open.|\nend_dialog|auth_ok|OK||\n")
-            is_authenticated = true
-        else
-            crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4Invalid Key!``|left|18|\nadd_spacer|small|\nadd_smalltext|Wrong key! (Try 1234)|\nend_dialog|auth_fail|OK||\n")
-        end
+    local key = pkt:match("freekey|([^\n\r]+)")
+    if not key or key == "" then
+        crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4No Key Entered!``|left|18|\nadd_spacer|small|\nadd_smalltext|You did not enter a key. Please try again.|\nend_dialog|auth_fail|OK||\n")
         return true
     end
-    return false
+    key = key:match("^%s*(.-)%s*$")
+
+    if verifyKey(key) then
+        crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`2Key Accepted!``|left|18|\nadd_spacer|small|\nadd_smalltext|Welcome to AutoSurg! Menu is now open.|\nend_dialog|auth_ok|OK||\n")
+        is_authenticated = true
+    else
+        crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4Invalid Key!``|left|18|\nadd_spacer|small|\nadd_smalltext|Wrong key! (Try 1234)|\nend_dialog|auth_fail|OK||\n")
+    end
+    return true
 end
 
 -- ====================================
@@ -70,7 +70,14 @@ local toolIds = {
     ["Fix it"]        = 1296,
 }
 
+local lastToolTime = 0
+local TOOL_COOLDOWN = 60 -- ms jeda antar tool
+
 local function useTool(toolName)
+    local now = os.clock() * 1000
+    if (now - lastToolTime) < TOOL_COOLDOWN then return end
+    lastToolTime = now
+
     local itool = toolIds[toolName]
     if not itool then return end
     sendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
