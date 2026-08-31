@@ -7,14 +7,21 @@ local currentOperatingDummy = nil
 local failedTiles = {}
 local autoWrenchRunning = false
 local wrenchSessionId = 0
-local script_name = "AutoSurg (TEST)"
+local script_name = "AutoSurg (ZamaStore)"
+local user_tier = "NONE" -- "FREE" or "PREMIUM"
 
 pcall(function() removeHook("onVariant") end)
 pcall(function() removeHook("onSendPacket") end)
 pcall(function() removeHook("onDrawImGui") end)
 
 local function verifyKey(key)
-    if key == "1234" then return true end
+    if key == "1234" then
+        user_tier = "FREE"
+        return true
+    elseif key == "vip" or key == "premium" or key == "12345" then
+        user_tier = "PREMIUM"
+        return true
+    end
     return false
 end
 
@@ -26,7 +33,21 @@ local function crossSendDialog(dialog)
     end
 end
 
-local auth_dialog = "set_default_color|`o\nadd_label_with_icon|big|`w" .. script_name .. " // AUTH``|left|1374|\nadd_spacer|small|\nadd_smalltext|Please enter your license key to unlock.|\nadd_spacer|small|\nadd_textbox|[TIP] Try typing '1234' for testing!|\nadd_spacer|small|\nadd_text_input|freekey|Secret Key:||50|\nend_dialog|test_auth_dialog|Cancel|UNLOCK ENGINE|\n"
+local auth_dialog = "set_default_color|`o\n" ..
+    "add_label_with_icon|big|`9ZAMA STORE `w// `cAutoSurg Engine``|left|1374|\n" ..
+    "add_spacer|small|\n" ..
+    "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
+    "add_smalltext|`eLicense Status: `4NOT ACTIVATED``|left|\n" ..
+    "add_smalltext|`wPlease enter your `bSecret License Key`w to unlock features.|left|\n" ..
+    "add_spacer|small|\n" ..
+    "add_textbox|`9[FREE TIER] `oKetik '`21234`o' untuk Free Access|left|\n" ..
+    "add_textbox|`6[VIP TIER]  `oKetik '`6vip`o' untuk Lifetime Premium VIP|left|\n" ..
+    "add_spacer|small|\n" ..
+    "add_text_input|freekey|Secret Key:||50|\n" ..
+    "add_spacer|small|\n" ..
+    "add_textbox|`oDapatkan key resmi di: `bdiscord.gg/ekuVdjF4F9|left|\n" ..
+    "end_dialog|test_auth_dialog|Cancel|⚡ UNLOCK ENGINE ⚡|\n"
+
 crossSendDialog(auth_dialog)
 
 -- ====================================
@@ -43,16 +64,54 @@ local function HookOutgoing(a, b, c)
 
     local key = pkt:match("freekey|([^\n\r]+)")
     if not key or key == "" then
-        crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4No Key Entered!``|left|18|\nadd_spacer|small|\nadd_smalltext|You did not enter a key. Please try again.|\nend_dialog|auth_fail|OK||\n")
+        crossSendDialog("set_default_color|`o\n" ..
+            "add_label_with_icon|big|`4ACCESS DENIED `w// `4NO KEY``|left|242|\n" ..
+            "add_spacer|small|\n" ..
+            "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
+            "add_smalltext|`4✖ Anda belum memasukkan key.|left|\n" ..
+            "add_smalltext|`wSilakan coba lagi dengan mengetikkan key yang benar.|left|\n" ..
+            "end_dialog|auth_fail|COBA LAGI||\n")
         return true
     end
     key = key:match("^%s*(.-)%s*$")
 
     if verifyKey(key) then
-        crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`2Key Accepted!``|left|18|\nadd_spacer|small|\nadd_smalltext|Welcome to AutoSurg! Menu is now open.|\nend_dialog|auth_ok|OK||\n")
+        if user_tier == "PREMIUM" then
+            crossSendDialog("set_default_color|`o\n" ..
+                "add_label_with_icon|big|`6⭐ PREMIUM VIP `w// `eLIFETIME ACCESS``|left|2480|\n" ..
+                "add_spacer|small|\n" ..
+                "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
+                "add_smalltext|`2✔ VIP Verified: `bLifetime License Active!|left|\n" ..
+                "add_smalltext|`eSelamat datang kembali, `6VIP Surgeon`e!|left|\n" ..
+                "add_smalltext|`wSemua fitur AutoSurg & Auto Wrench aktif tanpa batas.|left|\n" ..
+                "add_spacer|small|\n" ..
+                "add_textbox|`dTerima kasih atas dukunganmu untuk Zama Store!|left|\n" ..
+                "add_spacer|small|\n" ..
+                "end_dialog|premium_ok|START SURGERY!||\n")
+        else
+            crossSendDialog("set_default_color|`o\n" ..
+                "add_label_with_icon|big|`2ACCESS GRANTED `w// `aFREE TIER``|left|1374|\n" ..
+                "add_spacer|small|\n" ..
+                "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
+                "add_smalltext|`2✔ License Valid: `eFree Single-Session Active!|left|\n" ..
+                "add_smalltext|`wMenu ImGui AutoSurg sekarang sudah terbuka.|left|\n" ..
+                "add_spacer|small|\n" ..
+                "add_textbox|`6⭐ `eIngin akses permanen tanpa input key tiap hari?|left|\n" ..
+                "add_textbox|`6⭐ `eUpgrade ke `3Premium VIP `edi Discord kami!|left|\n" ..
+                "add_spacer|small|\n" ..
+                "add_textbox|`oDiscord: `bdiscord.gg/ekuVdjF4F9|left|\n" ..
+                "end_dialog|auth_ok|MULAI SEKARANG!||\n")
+        end
         is_authenticated = true
     else
-        crossSendDialog("set_default_color|`o\nadd_label_with_icon|big|`4Invalid Key!``|left|18|\nadd_spacer|small|\nadd_smalltext|Wrong key! (Try 1234)|\nend_dialog|auth_fail|OK||\n")
+        crossSendDialog("set_default_color|`o\n" ..
+            "add_label_with_icon|big|`4ACCESS DENIED `w// `4INVALID KEY``|left|242|\n" ..
+            "add_spacer|small|\n" ..
+            "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
+            "add_smalltext|`4✖ Key salah atau sudah kedaluwarsa.|left|\n" ..
+            "add_smalltext|`wKetik '`21234`w' (Free) atau '`6vip`w' (Premium) untuk testing.|left|\n" ..
+            "add_smalltext|`oDapatkan key gratis di: `bdiscord.gg/ekuVdjF4F9|left|\n" ..
+            "end_dialog|auth_fail|OK||\n")
     end
     return true
 end
@@ -545,32 +604,74 @@ if addHook then
 end
 
 -- ====================================
--- IMGUI INTERFACE
+-- IMGUI INTERFACE (PREMIUM & FREE)
 -- ====================================
+local function safeColoredText(colorVec, text)
+    local ok = false
+    if ImGui and ImGui.TextColored then
+        if ImVec4 then
+            ok = pcall(function() ImGui.TextColored(ImVec4(colorVec[1], colorVec[2], colorVec[3], colorVec[4]), text) end)
+        end
+        if not ok then
+            ok = pcall(function() ImGui.TextColored(colorVec, text) end)
+        end
+    end
+    if not ok and ImGui and ImGui.Text then
+        ImGui.Text(text)
+    end
+end
+
 local function zamaImGuiLoop()
-    if ImGui.Begin("Auto Surg by zama10") then
+    local winTitle = "AutoSurg // ZAMA STORE"
+    if user_tier == "PREMIUM" then
+        winTitle = "AutoSurg [PREMIUM VIP] - ZamaStore"
+    elseif user_tier == "FREE" then
+        winTitle = "AutoSurg [FREE TIER] - ZamaStore"
+    end
+
+    if ImGui.Begin(winTitle) then
         if not is_authenticated then
-            ImGui.Text("Status: NOT AUTHENTICATED")
-            ImGui.Text("Check the Growtopia dialog box!")
+            safeColoredText({1, 0.3, 0.3, 1}, "[!] STATUS: NOT ACTIVATED")
+            ImGui.Text("Silakan masukkan key di dialog Growtopia!")
+            if ImGui.Separator then ImGui.Separator() end
+            ImGui.Text("Komunitas: discord.gg/ekuVdjF4F9")
         else
-            ImGui.Text("Auto Surg")
+            -- Header Banner
+            if user_tier == "PREMIUM" then
+                safeColoredText({1, 0.84, 0, 1}, "[*] USER: PREMIUM VIP")
+                ImGui.SameLine()
+                safeColoredText({0.3, 1, 0.3, 1}, "[LIFETIME ACCESS]")
+            else
+                safeColoredText({0.3, 0.85, 1, 1}, "[i] USER: FREE TRIAL")
+                ImGui.SameLine()
+                safeColoredText({1, 0.7, 0.2, 1}, "[1 SESSION]")
+            end
+
+            if ImGui.Separator then ImGui.Separator() end
+
+            -- SECTION 1: SURGERY TOOLS
+            safeColoredText({0.35, 0.85, 1, 1}, "=== SURGERY ASSISTANT ===")
+            ImGui.Text("Auto Surg (Tools)")
             ImGui.SameLine()
             if autoSurgEnabled then
-                if ImGui.Button("ON##surg_btn") then
+                if ImGui.Button("[ ON ]##surg_btn") then
                     autoSurgEnabled = false
                     growtopia.notify("`4AutoSurg Disabled")
                 end
             else
-                if ImGui.Button("OFF##surg_btn") then
+                if ImGui.Button("[ OFF ]##surg_btn") then
                     autoSurgEnabled = true
                     growtopia.notify("`2AutoSurg Enabled")
                 end
             end
 
+            -- SECTION 2: SURG-E AUTOMATION
+            if ImGui.Separator then ImGui.Separator() end
+            safeColoredText({1, 0.8, 0.3, 1}, "=== SURG-E AUTOMATION ===")
             ImGui.Text("Auto Wrench Surg-e")
             ImGui.SameLine()
             if autoWrenchEnabled then
-                if ImGui.Button("ON##wrench_btn") then
+                if ImGui.Button("[ ON ]##wrench_btn") then
                     autoWrenchEnabled = false
                     isSurgeryActive = false
                     currentOperatingDummy = nil
@@ -580,12 +681,33 @@ local function zamaImGuiLoop()
                     growtopia.notify("`4Auto Wrench Disabled")
                 end
             else
-                if ImGui.Button("OFF##wrench_btn") then
+                if ImGui.Button("[ OFF ]##wrench_btn") then
                     autoWrenchEnabled = true
                     growtopia.notify("`2Auto Wrench Enabled")
                     startAutoWrenchLoop()
                 end
             end
+
+            -- SECTION 3: LIVE STATUS
+            if ImGui.Separator then ImGui.Separator() end
+            ImGui.Text("Activity Status:")
+            ImGui.SameLine()
+            if isSurgeryActive then
+                safeColoredText({0.2, 1, 0.2, 1}, "OPERATING SURGERY...")
+            elseif autoWrenchEnabled then
+                safeColoredText({1, 1, 0.3, 1}, "SEARCHING SURG-E...")
+            else
+                safeColoredText({0.6, 0.6, 0.6, 1}, "STANDBY (IDLE)")
+            end
+
+            -- FOOTER
+            if ImGui.Separator then ImGui.Separator() end
+            if user_tier == "FREE" then
+                safeColoredText({1, 0.75, 0.2, 1}, "[*] Ingin tanpa key? Upgrade ke VIP!")
+            else
+                safeColoredText({0.4, 1, 0.4, 1}, "[*] Terima kasih sudah support VIP!")
+            end
+            safeColoredText({0.5, 0.7, 1, 1}, "Discord: discord.gg/ekuVdjF4F9")
         end
         ImGui.End()
     end
