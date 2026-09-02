@@ -1,6 +1,6 @@
 -- ==========================================
 -- AutoSurg + Auto Wrench Surg-E by zama10
--- Module Integration with Auth System for Growlauncher
+-- Native ImGui + Growlauncher Module Toggle
 -- Discord: discord.gg/ekuVdjF4F9
 -- ==========================================
 
@@ -9,16 +9,35 @@ pcall(function()
     if removeHook then
         removeHook("onvariant")
         removeHook("onvalue")
+        removeHook("ondrawimgui")
         removeHook("onVariant")
         removeHook("OnVariant")
         removeHook("onValue")
         removeHook("OnValue")
+        removeHook("onDrawImGui")
+        removeHook("OnDrawImGui")
     end
 end)
 
+-- ---@type Preferences
+local pref = require and pcall(require, "preferences") and require("preferences") or nil
+local saved = pref and pref.new and pref:new("autosurg_prefs.json") or nil
+
+local imgui_opened = saved and saved:get("opened", false) or false
 local is_authenticated = false
-local auth_key_input = ""
+local keyInputBuffer = saved and saved:get("auth_key", "") or ""
 local user_tier = "FREE"
+local keyStatusText = "Status: [ Not Verified ]"
+
+if keyInputBuffer ~= "" then
+    local k = keyInputBuffer:gsub("%s+", "")
+    if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
+        is_authenticated = true
+        user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
+        keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
+    end
+end
+
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
 local isSurgeryActive = false
@@ -27,22 +46,6 @@ local currentOperatingDummy = nil
 local failedTiles = {}
 local wrenchSessionId = 0
 local isInitialized = false
-
--- Try loading saved key preference
-pcall(function()
-    local pref = require and require("preferences")
-    if pref and pref.new then
-        local saved = pref:new("autosurg_prefs.json")
-        if saved then
-            local sk = saved:get("auth_key", "")
-            if sk and sk ~= "" then
-                auth_key_input = sk
-                is_authenticated = true
-                user_tier = "PREMIUM"
-            end
-        end
-    end
-end)
 
 -- ====================================
 -- NOTIFICATION (STRICTLY growtopia.notify ONLY)
@@ -342,12 +345,6 @@ local function turnOffAutoSurg(reason)
     wrenchSessionId = (wrenchSessionId or 0) + 1
     enableFly(false)
 
-    if editValue then
-        pcall(function() editValue("surg_master_toggle", false) end)
-        pcall(function() editValue("surg_tools_toggle", false) end)
-        pcall(function() editValue("surg_wrench_toggle", false) end)
-    end
-
     notifyUser("`4[AutoSurg] " .. (reason or "Stopped") .. "!")
 end
 
@@ -604,118 +601,262 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
--- GROWLAUNCHER NATIVE MODULE INTEGRATION
+-- PURPLE IMGUI INTERFACE & CONTROLS
 -- ====================================
-local function handleValue(alias, value)
-    -- Guard: Ignore default launcher value events while initializing
-    if not isInitialized then
-        if alias == "input_auth_key" then
-            auth_key_input = tostring(value or "")
-        elseif alias == "surg_master_toggle" then
-            autoSurgEnabled = value
-            autoWrenchEnabled = value
-        elseif alias == "surg_tools_toggle" then
-            autoSurgEnabled = value
-        elseif alias == "surg_wrench_toggle" then
-            autoWrenchEnabled = value
-        end
-        return
+local function purpleButton(label, height)
+    local h = height or 28
+    local pushed = false
+    if ImGui and ImGui.PushStyleColor and ImVec4 then
+        pcall(function()
+            ImGui.PushStyleColor(21, ImVec4(0.48, 0.36, 0.98, 1.0))
+            ImGui.PushStyleColor(22, ImVec4(0.58, 0.46, 1.00, 1.0))
+            ImGui.PushStyleColor(23, ImVec4(0.40, 0.28, 0.88, 1.0))
+            pushed = true
+        end)
     end
 
-    -- AUTH HANDLERS
-    if alias == "input_auth_key" then
-        auth_key_input = tostring(value or "")
-    elseif alias == "btn_get_key" then
-        notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey)")
-    elseif alias == "btn_verify_key" then
-        local k = (auth_key_input or ""):gsub("%s+", "")
-        if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
-            is_authenticated = true
-            user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
-            notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
+    local clicked = false
+    if ImVec2 then
+        clicked = ImGui.Button(label, ImVec2(-1, h))
+    else
+        clicked = ImGui.Button(label)
+    end
 
-            -- Save key preference
-            pcall(function()
-                local pref = require and require("preferences")
-                if pref and pref.new then
-                    local saved = pref:new("autosurg_prefs.json")
-                    if saved then
-                        saved:set("auth_key", auth_key_input)
-                        saved:save()
-                    end
+    if pushed and ImGui and ImGui.PopStyleColor then
+        pcall(function() ImGui.PopStyleColor(3) end)
+    end
+    return clicked
+end
+
+local function darkButton(label, height)
+    local h = height or 28
+    local pushed = false
+    if ImGui and ImGui.PushStyleColor and ImVec4 then
+        pcall(function()
+            ImGui.PushStyleColor(21, ImVec4(0.18, 0.19, 0.26, 1.0))
+            ImGui.PushStyleColor(22, ImVec4(0.24, 0.26, 0.35, 1.0))
+            ImGui.PushStyleColor(23, ImVec4(0.14, 0.15, 0.20, 1.0))
+            pushed = true
+        end)
+    end
+
+    local clicked = false
+    if ImVec2 then
+        clicked = ImGui.Button(label, ImVec2(-1, h))
+    else
+        clicked = ImGui.Button(label)
+    end
+
+    if pushed and ImGui and ImGui.PopStyleColor then
+        pcall(function() ImGui.PopStyleColor(3) end)
+    end
+    return clicked
+end
+
+local function safeTextColored(r, g, b, text)
+    local ok = false
+    if ImGui and ImGui.TextColored and ImVec4 then
+        ok = pcall(function() ImGui.TextColored(ImVec4(r, g, b, 1.0), text) end)
+    end
+    if not ok and ImGui and ImGui.Text then
+        ImGui.Text(text)
+    end
+end
+
+function onDrawImGui(delta)
+    if not imgui_opened then return end
+
+    if ImGui.SetNextWindowSize and ImVec2 then
+        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 480), 4) end)
+    end
+
+    local shouldDraw, stillOpen = ImGui.Begin("AutoSurg // Zama Store", imgui_opened)
+    if stillOpen == false then
+        imgui_opened = false
+        if editValue then pcall(function() editValue("enable_autosurg_imgui", false) end) end
+        if saved then saved:set("opened", false) saved:save() end
+    end
+
+    if shouldDraw then
+        -- 1. HEADER
+        safeTextColored(0.70, 0.60, 1.0, "[*] AutoSurg // Zama Store")
+        safeTextColored(0.65, 0.68, 0.78, "Surg-E & Surgery Automation")
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 2. AUTH SECTION
+        if purpleButton("Get Key (Free)##get_key_btn", 30) then
+            notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
+        end
+
+        ImGui.Text("Key:")
+        if ImGui.InputText then
+            local ok, newTxt = pcall(function() return ImGui.InputText("##key_in", keyInputBuffer, 64) end)
+            if ok and type(newTxt) == "string" then
+                keyInputBuffer = newTxt
+            end
+        end
+
+        if purpleButton("Verify Key##verify_btn", 30) then
+            local k = (keyInputBuffer or ""):gsub("%s+", "")
+            if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
+                is_authenticated = true
+                user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
+                keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
+                notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
+
+                if saved then
+                    saved:set("auth_key", keyInputBuffer)
+                    saved:save()
                 end
-            end)
-        else
-            is_authenticated = false
-            notifyUser("`4[AutoSurg] Invalid Key! Please get a valid key from Discord.")
-        end
-    -- SURG CONTROL HANDLERS (REQUIRE AUTH)
-    elseif alias == "surg_master_toggle" then
-        if not is_authenticated and value then
-            if editValue then pcall(function() editValue("surg_master_toggle", false) end) end
-            notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
-            return
+            else
+                is_authenticated = false
+                keyStatusText = "Status: [ Invalid Key! ]"
+                notifyUser("`4[AutoSurg] Invalid Key! Get key from Discord: discord.gg/ekuVdjF4F9")
+            end
         end
 
-        autoSurgEnabled = value
-        autoWrenchEnabled = value
-        if value then
-            notifyUser("`2[AutoSurg] Master Enabled!")
-            startAutoWrenchLoop()
+        -- Key Status Badge
+        if is_authenticated then
+            safeTextColored(0.3, 1.0, 0.4, keyStatusText)
         else
-            notifyUser("`4[AutoSurg] Master Disabled!")
-            isSurgeryActive = false
-            currentOperatingDummy = nil
-            enableFly(false)
+            safeTextColored(1.0, 0.35, 0.35, keyStatusText)
         end
-    elseif alias == "surg_tools_toggle" then
-        if not is_authenticated and value then
-            if editValue then pcall(function() editValue("surg_tools_toggle", false) end) end
-            notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
-            return
-        end
-        autoSurgEnabled = value
-    elseif alias == "surg_wrench_toggle" then
-        if not is_authenticated and value then
-            if editValue then pcall(function() editValue("surg_wrench_toggle", false) end) end
-            notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
-            return
-        end
-        autoWrenchEnabled = value
-        if value then
-            notifyUser("`2[AutoSurg] Auto Wrench Enabled!")
-            startAutoWrenchLoop()
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 3. MASTER ENABLE TOGGLE
+        local masterActive = autoSurgEnabled and autoWrenchEnabled
+        local masterBtnLabel = masterActive and "Master Enable: [ ON ]##master_tog" or "Master Enable: [ OFF ]##master_tog"
+
+        local masterClicked = false
+        if masterActive then
+            masterClicked = purpleButton(masterBtnLabel, 32)
         else
-            notifyUser("`4[AutoSurg] Auto Wrench Disabled!")
-            isSurgeryActive = false
-            currentOperatingDummy = nil
-            enableFly(false)
+            masterClicked = darkButton(masterBtnLabel, 32)
         end
-    elseif alias == "btn_stop_all_surg" then
-        turnOffAutoSurg("Manual Stop")
+
+        if masterClicked then
+            if not is_authenticated then
+                notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+            else
+                local newState = not masterActive
+                autoSurgEnabled = newState
+                autoWrenchEnabled = newState
+                if newState then
+                    notifyUser("`2[AutoSurg] Master Enabled!")
+                    startAutoWrenchLoop()
+                else
+                    notifyUser("`4[AutoSurg] Master Disabled!")
+                    isSurgeryActive = false
+                    currentOperatingDummy = nil
+                    enableFly(false)
+                end
+            end
+        end
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 4. SURGERY TOOL BUTTON
+        local surgLabel = autoSurgEnabled and "Auto Surg (Tools) [ ON ]##surg_tog" or "Auto Surg (Tools) [ OFF ]##surg_tog"
+        if autoSurgEnabled then
+            if purpleButton(surgLabel, 30) then
+                autoSurgEnabled = false
+                notifyUser("`4Auto Surg Tools Disabled")
+            end
+        else
+            if darkButton(surgLabel, 30) then
+                if not is_authenticated then
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                else
+                    autoSurgEnabled = true
+                    notifyUser("`2Auto Surg Tools Enabled")
+                end
+            end
+        end
+
+        -- 5. AUTO WRENCH SURG-E BUTTON
+        local wrenchLabel = autoWrenchEnabled and "Auto Wrench Surg-E [ ON ]##wrench_tog" or "Auto Wrench Surg-E [ OFF ]##wrench_tog"
+        if autoWrenchEnabled then
+            if purpleButton(wrenchLabel, 30) then
+                autoWrenchEnabled = false
+                isSurgeryActive = false
+                currentOperatingDummy = nil
+                enableFly(false)
+                notifyUser("`4Auto Wrench Disabled")
+            end
+        else
+            if darkButton(wrenchLabel, 30) then
+                if not is_authenticated then
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                else
+                    autoWrenchEnabled = true
+                    notifyUser("`2Auto Wrench Enabled")
+                    startAutoWrenchLoop()
+                end
+            end
+        end
+
+        -- Pathfinding Info Pill
+        if purpleButton("Movement: 4-5 Tiles Smooth Move##move_pill", 28) then
+            notifyUser("`2[AutoSurg] Stepped Pathfinding Active!")
+        end
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 6. STATUS & REFRESH
+        local actText = isSurgeryActive and "Activity: OPERATING SURGERY..." or (autoWrenchEnabled and "Activity: SEARCHING SURG-E..." or "Activity: STANDBY (IDLE)")
+        safeTextColored(0.4, 0.85, 1.0, actText)
+
+        if purpleButton("Refresh Status##refresh_btn", 28) then
+            notifyUser("`9[AutoSurg Status] `o" .. actText)
+        end
+
+        ImGui.End()
+    end
+end
+
+-- ====================================
+-- GROWLAUNCHER NATIVE MODULE (TOGGLE ON/OFF IMGUI)
+-- ====================================
+local function handleValue(alias, value)
+    if alias == "enable_autosurg_imgui" then
+        imgui_opened = value
+        if saved then
+            saved:set("opened", value)
+            saved:save()
+        end
+        if value then
+            notifyUser("`2[AutoSurg] ImGui Window Opened")
+        else
+            notifyUser("`4[AutoSurg] ImGui Window Closed")
+        end
     elseif alias == "btn_refresh_surg" then
         local act = isSurgeryActive and "OPERATING SURGERY" or (autoWrenchEnabled and "SEARCHING SURG-E" or "STANDBY (IDLE)")
         notifyUser("`9[AutoSurg Status] `oActivity: `2" .. act)
     elseif alias == "btn_stop_script" then
         -- 1. Stop all operations and loops
         turnOffAutoSurg("Script Unloaded")
+        imgui_opened = false
 
         -- 2. Remove all hooks
         pcall(function()
             if removeHook then
                 removeHook("onvariant")
                 removeHook("onvalue")
+                removeHook("ondrawimgui")
                 removeHook("onVariant")
                 removeHook("OnVariant")
                 removeHook("onValue")
                 removeHook("OnValue")
+                removeHook("onDrawImGui")
+                removeHook("OnDrawImGui")
             end
         end)
 
         -- 3. Clear module via official addIntoModule("{}") API
         pcall(function()
             if addIntoModule then
-                addIntoModule("{}", "AutoSurg")
+                addIntoModule("{}", "ImGui")
             end
         end)
     end
@@ -724,19 +865,12 @@ end
 -- Hook into module events via setOnValue if available
 if setOnValue then
     pcall(function()
-        setOnValue("input_auth_key", function(val) handleValue("input_auth_key", val) end)
-        setOnValue("btn_get_key", function(val) handleValue("btn_get_key", val) end)
-        setOnValue("btn_verify_key", function(val) handleValue("btn_verify_key", val) end)
-        setOnValue("surg_master_toggle", function(val) handleValue("surg_master_toggle", val) end)
-        setOnValue("surg_tools_toggle", function(val) handleValue("surg_tools_toggle", val) end)
-        setOnValue("surg_wrench_toggle", function(val) handleValue("surg_wrench_toggle", val) end)
-        setOnValue("btn_stop_all_surg", function(val) handleValue("btn_stop_all_surg", val) end)
+        setOnValue("enable_autosurg_imgui", function(val) handleValue("enable_autosurg_imgui", val) end)
         setOnValue("btn_refresh_surg", function(val) handleValue("btn_refresh_surg", val) end)
         setOnValue("btn_stop_script", function(val) handleValue("btn_stop_script", val) end)
     end)
 end
 
--- Global hook function for module value changes
 function OnValue(menuType, name, value)
     handleValue(name, value)
 end
@@ -746,39 +880,28 @@ onValue = OnValue
 if addHook then
     pcall(function() addHook(onVariant, "onvariant") end)
     pcall(function() addHook(OnValue, "onvalue") end)
+    pcall(function() addHook(onDrawImGui, "ondrawimgui") end)
+    pcall(function() addHook(onDrawImGui, "onDrawImGui") end)
 end
 
--- Build and Register Native Module UI EXACTLY ONCE
+-- Build and Register Native Module UI under ImGui Category
 pcall(function()
     if UserInterface and UserInterface.new then
-        local ui = UserInterface.new("AutoSurg", "Verified")
-        ui:addLabelApp("AutoSurg // Zama Store", "Verified")
-        
-        -- AUTH SECTION
-        ui:addButton("Get Key (Free)", "btn_get_key")
-        ui:addInputString("Key", auth_key_input or "", "Enter key", "Type key here", "Info", "input_auth_key")
-        ui:addButton("Verify Key", "btn_verify_key")
-        ui:addTooltip("Status: Key Auth", "Click Verify Key to Activate", "Verified", true)
-        
-        ui:addDivider()
-
-        -- SURGERY CONTROLS
-        ui:addToggle("Master Enable", false, "surg_master_toggle", false)
-        ui:addToggle("Auto Surg (Tools)", false, "surg_tools_toggle", false)
-        ui:addToggle("Auto Wrench Surg-E", false, "surg_wrench_toggle", false)
-        ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
+        local ui = UserInterface.new("AutoSurg", "Wysiwyg")
+        ui:addLabelApp("AutoSurg", "Wysiwyg")
+        ui:addTooltip("Information", "Surg-E & Surgery Automation // Zama Store", "Info", false)
+        ui:addToggle("Enable ImGui", imgui_opened, "enable_autosurg_imgui", false)
         ui:addButton("Refresh Status", "btn_refresh_surg")
-        ui:addButton("Stop All Operations", "btn_stop_all_surg")
         ui:addButton("Stop Script (Unload)", "btn_stop_script")
 
         local json = ui:generateJSON()
 
         if addCategory then
-            pcall(function() addCategory("AutoSurg", "Verified") end)
+            pcall(function() addCategory("ImGui", "Wysiwyg") end)
         end
 
         if addIntoModule then
-            pcall(function() addIntoModule(json, "AutoSurg") end)
+            pcall(function() addIntoModule(json, "ImGui") end)
         end
     end
 end)
