@@ -1,6 +1,6 @@
 -- ==========================================
 -- AutoSurg + Auto Wrench Surg-E by zama10
--- Module Integration for Growlauncher
+-- Module Integration with Auth System for Growlauncher
 -- Discord: discord.gg/ekuVdjF4F9
 -- ==========================================
 
@@ -16,6 +16,9 @@ pcall(function()
     end
 end)
 
+local is_authenticated = false
+local auth_key_input = ""
+local user_tier = "FREE"
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
 local isSurgeryActive = false
@@ -24,6 +27,22 @@ local currentOperatingDummy = nil
 local failedTiles = {}
 local wrenchSessionId = 0
 local isInitialized = false
+
+-- Try loading saved key preference
+pcall(function()
+    local pref = require and require("preferences")
+    if pref and pref.new then
+        local saved = pref:new("autosurg_prefs.json")
+        if saved then
+            local sk = saved:get("auth_key", "")
+            if sk and sk ~= "" then
+                auth_key_input = sk
+                is_authenticated = true
+                user_tier = "PREMIUM"
+            end
+        end
+    end
+end)
 
 -- ====================================
 -- NOTIFICATION (STRICTLY growtopia.notify ONLY)
@@ -365,6 +384,11 @@ end
 -- AUTO WRENCH THREAD LOOP
 -- ====================================
 local function startAutoWrenchLoop()
+    if not is_authenticated then
+        turnOffAutoSurg("Access Denied! Please verify key first")
+        return
+    end
+
     wrenchSessionId = (wrenchSessionId or 0) + 1
     local currentSession = wrenchSessionId
     isSurgeryActive = false
@@ -477,7 +501,7 @@ function onVariant(var, pkt)
 
         -- 2. Check Surg-E pre-popup (Accept surgery)
         if dialog:find("end_dialog|surge|Cancel|Okay!|") then
-            if autoWrenchEnabled or autoSurgEnabled then
+            if (autoWrenchEnabled or autoSurgEnabled) and is_authenticated then
                 local tilex = dialog:match("tilex|(%d+)")
                 local tiley = dialog:match("tiley|(%d+)")
                 isSurgeryActive = true
@@ -491,8 +515,8 @@ function onVariant(var, pkt)
             end
         end
 
-        -- 3. Only run tool actions if autoSurgEnabled is ON
-        if not autoSurgEnabled then return false end
+        -- 3. Only run tool actions if autoSurgEnabled is ON and authenticated
+        if not autoSurgEnabled or not is_authenticated then return false end
 
         if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
             local netID = dialog:match("netID|(%d+)")
@@ -580,12 +604,56 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
+-- GROWLAUNCHER NATIVE MODULE UI BUILDER
+-- ====================================
+local function buildModuleUI()
+    if not (UserInterface and UserInterface.new) then return end
+
+    local ui = UserInterface.new("AutoSurg", "Verified")
+    ui:addLabelApp("AutoSurg // Zama Store", "Verified")
+    
+    -- AUTH SECTION
+    ui:addButton("Get Key (Free)", "btn_get_key")
+    ui:addInputString("Key", auth_key_input or "", "Enter key", "Type key here", "Info", "input_auth_key")
+    ui:addButton("Verify Key", "btn_verify_key")
+    
+    if is_authenticated then
+        ui:addTooltip("Status: \xE2\x9C\x85 Verified", "Access Granted (" .. user_tier .. ")", "Verified", true)
+    else
+        ui:addTooltip("Status: \xE2\x9D\x8C Not Verified", "Enter Key to Unlock", "Info", false)
+    end
+    
+    ui:addDivider()
+
+    -- SURGERY AUTOMATION CONTROLS
+    ui:addToggle("Master Enable", autoSurgEnabled and autoWrenchEnabled, "surg_master_toggle", false)
+    ui:addToggle("Auto Surg (Tools)", autoSurgEnabled, "surg_tools_toggle", false)
+    ui:addToggle("Auto Wrench Surg-E", autoWrenchEnabled, "surg_wrench_toggle", false)
+    ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
+    ui:addButton("Refresh Status", "btn_refresh_surg")
+    ui:addButton("Stop All Operations", "btn_stop_all_surg")
+    ui:addButton("Stop Script (Unload)", "btn_stop_script")
+
+    local json = ui:generateJSON()
+
+    if addCategory then
+        pcall(function() addCategory("AutoSurg", "Verified") end)
+    end
+
+    if addIntoModule then
+        pcall(function() addIntoModule(json, "AutoSurg") end)
+    end
+end
+
+-- ====================================
 -- GROWLAUNCHER NATIVE MODULE INTEGRATION
 -- ====================================
 local function handleValue(alias, value)
     -- Guard: Ignore default launcher value events while initializing
     if not isInitialized then
-        if alias == "surg_master_toggle" then
+        if alias == "input_auth_key" then
+            auth_key_input = tostring(value or "")
+        elseif alias == "surg_master_toggle" then
             autoSurgEnabled = value
             autoWrenchEnabled = value
         elseif alias == "surg_tools_toggle" then
@@ -596,7 +664,44 @@ local function handleValue(alias, value)
         return
     end
 
-    if alias == "surg_master_toggle" then
+    -- AUTH HANDLERS
+    if alias == "input_auth_key" then
+        auth_key_input = tostring(value or "")
+    elseif alias == "btn_get_key" then
+        notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey)")
+    elseif alias == "btn_verify_key" then
+        local k = (auth_key_input or ""):gsub("%s+", "")
+        if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
+            is_authenticated = true
+            user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
+            notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
+
+            -- Save key preference
+            pcall(function()
+                local pref = require and require("preferences")
+                if pref and pref.new then
+                    local saved = pref:new("autosurg_prefs.json")
+                    if saved then
+                        saved:set("auth_key", auth_key_input)
+                        saved:save()
+                    end
+                end
+            end)
+
+            buildModuleUI()
+        else
+            is_authenticated = false
+            notifyUser("`4[AutoSurg] Invalid Key! Please get a valid key from Discord.")
+            buildModuleUI()
+        end
+    -- SURG CONTROL HANDLERS (REQUIRE AUTH)
+    elseif alias == "surg_master_toggle" then
+        if not is_authenticated and value then
+            if editValue then pcall(function() editValue("surg_master_toggle", false) end) end
+            notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+            return
+        end
+
         autoSurgEnabled = value
         autoWrenchEnabled = value
         if value then
@@ -609,8 +714,18 @@ local function handleValue(alias, value)
             enableFly(false)
         end
     elseif alias == "surg_tools_toggle" then
+        if not is_authenticated and value then
+            if editValue then pcall(function() editValue("surg_tools_toggle", false) end) end
+            notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+            return
+        end
         autoSurgEnabled = value
     elseif alias == "surg_wrench_toggle" then
+        if not is_authenticated and value then
+            if editValue then pcall(function() editValue("surg_wrench_toggle", false) end) end
+            notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+            return
+        end
         autoWrenchEnabled = value
         if value then
             notifyUser("`2[AutoSurg] Auto Wrench Enabled!")
@@ -654,6 +769,9 @@ end
 -- Hook into module events via setOnValue if available
 if setOnValue then
     pcall(function()
+        setOnValue("input_auth_key", function(val) handleValue("input_auth_key", val) end)
+        setOnValue("btn_get_key", function(val) handleValue("btn_get_key", val) end)
+        setOnValue("btn_verify_key", function(val) handleValue("btn_verify_key", val) end)
         setOnValue("surg_master_toggle", function(val) handleValue("surg_master_toggle", val) end)
         setOnValue("surg_tools_toggle", function(val) handleValue("surg_tools_toggle", val) end)
         setOnValue("surg_wrench_toggle", function(val) handleValue("surg_wrench_toggle", val) end)
@@ -675,32 +793,8 @@ if addHook then
     pcall(function() addHook(OnValue, "onvalue") end)
 end
 
--- Build and Register Native Module UI (Single Category: AutoSurg)
-pcall(function()
-    if UserInterface and UserInterface.new then
-        local ui = UserInterface.new("AutoSurg", "Verified")
-        ui:addLabelApp("AutoSurg // Zama Store", "Verified")
-        ui:addTooltip("Information", "Surg-E & Surgery Automation", "Info", false)
-        ui:addDivider()
-        ui:addToggle("Master Enable", false, "surg_master_toggle", false)
-        ui:addToggle("Auto Surg (Tools)", false, "surg_tools_toggle", false)
-        ui:addToggle("Auto Wrench Surg-E", false, "surg_wrench_toggle", false)
-        ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
-        ui:addButton("Refresh Status", "btn_refresh_surg")
-        ui:addButton("Stop All Operations", "btn_stop_all_surg")
-        ui:addButton("Stop Script (Unload)", "btn_stop_script")
-
-        local json = ui:generateJSON()
-
-        if addCategory then
-            pcall(function() addCategory("AutoSurg", "Verified") end)
-        end
-
-        if addIntoModule then
-            pcall(function() addIntoModule(json, "AutoSurg") end)
-        end
-    end
-end)
+-- Build and Register Native Module UI with Auth
+pcall(buildModuleUI)
 
 if applyHook then pcall(applyHook) end
 
