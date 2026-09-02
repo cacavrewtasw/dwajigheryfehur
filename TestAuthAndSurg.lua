@@ -16,10 +16,6 @@ pcall(function()
     end
 end)
 
--- ---@type Preferences
-local pref = require and pcall(require, "preferences") and require("preferences") or nil
-local saved = pref and pref.new and pref:new("autosurg_prefs.json") or nil
-
 -- ImGui window state (No saved key - requires fresh verification each session)
 local imgui_opened = true
 local is_authenticated = false
@@ -370,7 +366,7 @@ end
 -- ====================================
 local function startAutoWrenchLoop()
     if not is_authenticated then
-        turnOffAutoSurg("Access Denied! Please verify key first")
+        turnOffAutoSurg("Access Denied! Please verify key in launcher module first")
         return
     end
 
@@ -589,7 +585,8 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
--- CRISP & WORKING IMGUI BUTTON RENDERER
+-- FLOATING IMGUI WINDOW
+-- (HANYA KONTROL AUTOMATION - NO AUTH DISINI)
 -- ====================================
 local function safeTextColored(r, g, b, text)
     local ok = false
@@ -629,7 +626,7 @@ function onDrawImGui(delta)
     if not imgui_opened then return end
 
     if ImGui.SetNextWindowSize and ImVec2 and ImGui.Cond then
-        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 370), ImGui.Cond.FirstUseEver or 4) end)
+        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 240), ImGui.Cond.FirstUseEver or 4) end)
     end
 
     if ImGui.Begin("AutoSurg // Zama Store") then
@@ -645,45 +642,16 @@ function onDrawImGui(delta)
 
         if ImGui.Separator then ImGui.Separator() end
 
-        -- 2. AUTHENTICATION SECTION (MURNI HANYA DI IMGUI - NO AUTO-SAVE)
-        safeTextColored(1.0, 0.84, 0.0, "=== KEY AUTHENTICATION ===")
-        if customBtn("Get Key (Free)##get_key_btn", 0, 26) then
-            notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
-        end
-
-        ImGui.Text("Enter Key:")
-        if ImGui.InputText then
-            local changed, newTxt = ImGui.InputText("##key_in", keyInputBuffer, 64)
-            if changed and newTxt then
-                keyInputBuffer = newTxt
-            end
-        end
-
-        ImGui.SameLine()
-        if customBtn("Verify Key##verify_btn", 0, 26) then
-            local k = (keyInputBuffer or ""):gsub("%s+", "")
-            if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
-                is_authenticated = true
-                user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
-                keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
-                notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
-            else
-                is_authenticated = false
-                keyStatusText = "Status: [ Invalid Key! ]"
-                notifyUser("`4[AutoSurg] Invalid Key! Get key from Discord: discord.gg/ekuVdjF4F9")
-            end
-        end
-
-        -- Key Status Badge
+        -- Status Lisensi
         if is_authenticated then
-            safeTextColored(0.3, 1.0, 0.4, keyStatusText)
+            safeTextColored(0.3, 1.0, 0.4, "License: [ Verified (" .. user_tier .. ") ]")
         else
-            safeTextColored(1.0, 0.35, 0.35, keyStatusText)
+            safeTextColored(1.0, 0.35, 0.35, "License: [ Not Verified - Enter Key in Launcher Module ]")
         end
 
         if ImGui.Separator then ImGui.Separator() end
 
-        -- 3. SURGERY AUTOMATION CONTROLS
+        -- 2. SURGERY AUTOMATION CONTROLS
         safeTextColored(0.35, 0.85, 1.0, "=== SURGERY AUTOMATION ===")
 
         -- Master Enable Toggle Button
@@ -702,7 +670,7 @@ function onDrawImGui(delta)
         else
             if customBtn("[ OFF ]##master_tog", 65, 24) then
                 if not is_authenticated then
-                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key in launcher module first.")
                 else
                     autoSurgEnabled = true
                     autoWrenchEnabled = true
@@ -723,7 +691,7 @@ function onDrawImGui(delta)
         else
             if customBtn("[ OFF ]##surg_tog", 65, 24) then
                 if not is_authenticated then
-                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key in launcher module first.")
                 else
                     autoSurgEnabled = true
                     notifyUser("`2Auto Surg Tools Enabled")
@@ -745,7 +713,7 @@ function onDrawImGui(delta)
         else
             if customBtn("[ OFF ]##wrench_tog", 65, 24) then
                 if not is_authenticated then
-                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key in launcher module first.")
                 else
                     autoWrenchEnabled = true
                     notifyUser("`2Auto Wrench Enabled")
@@ -756,7 +724,7 @@ function onDrawImGui(delta)
 
         if ImGui.Separator then ImGui.Separator() end
 
-        -- 4. LIVE STATUS & FOOTER
+        -- 3. LIVE STATUS & FOOTER
         local actText = isSurgeryActive and "OPERATING SURGERY..." or (autoWrenchEnabled and "SEARCHING SURG-E..." or "STANDBY (IDLE)")
         safeTextColored(0.4, 0.85, 1.0, "Activity: " .. actText)
 
@@ -773,10 +741,26 @@ OnDrawImGui = onDrawImGui
 
 -- ====================================
 -- GROWLAUNCHER NATIVE MODULE
--- (Bersih murni hanya toggle ImGui & status, NO AUTH DISINI)
+-- (AUTH LENGKAP DI SINI DI ATAS ENABLE IMGUI)
 -- ====================================
 function onValue(type, name, value)
-    if name == "enable_autosurg_imgui" then
+    if name == "input_auth_key" then
+        keyInputBuffer = tostring(value or "")
+    elseif name == "btn_get_key" then
+        notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
+    elseif name == "btn_verify_key" then
+        local k = (keyInputBuffer or ""):gsub("%s+", "")
+        if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
+            is_authenticated = true
+            user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
+            keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
+            notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
+        else
+            is_authenticated = false
+            keyStatusText = "Status: [ Invalid Key! ]"
+            notifyUser("`4[AutoSurg] Invalid Key! Get key from Discord: discord.gg/ekuVdjF4F9")
+        end
+    elseif name == "enable_autosurg_imgui" then
         imgui_opened = value
         if value then
             notifyUser("`2[AutoSurg] ImGui Window Opened")
@@ -820,16 +804,25 @@ end
 if applyHook then pcall(applyHook) end
 
 -- Build and Register Native Module UI under ImGui Category
--- HANYA TOGGLE ENABLE IMGUI & KONTROL DASAR, NO AUTH DISINI!
+-- AUTH DI SINI DI ATAS ENABLE IMGUI! TIDAK MENYIMPAN KEY!
 pcall(function()
     if UserInterface and UserInterface.new then
         local ui = UserInterface.new("AutoSurg", "Wysiwyg")
         ui:addLabelApp("AutoSurg", "Wysiwyg")
         ui:addTooltip("Information", "Surg-E & Surgery Automation // Zama Store", "Info", false)
 
-        -- HANYA TOGGLE ON/OFF IMGUI
+        -- 1. AUTH SECTION DI SINI DI ATAS ENABLE IMGUI
+        ui:addButton("Get Key (Free)", "btn_get_key")
+        ui:addInputString("Key", "", "Enter key", "Type key here", "Info", "input_auth_key")
+        ui:addButton("Verify Key", "btn_verify_key")
+        ui:addTooltip("Status: Key Auth", "Enter key and click Verify Key", "Verified", true)
+
+        ui:addDivider()
+
+        -- 2. ENABLE IMGUI TOGGLE (DI BAWAH AUTH)
         ui:addToggle("Enable ImGui", true, "enable_autosurg_imgui", false)
 
+        -- 3. BUTTONS
         ui:addButton("Refresh Status", "btn_refresh_surg")
         ui:addButton("Stop Script (Unload)", "btn_stop_script")
 
