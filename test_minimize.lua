@@ -26,7 +26,8 @@ local wrenchSessionId = 0
 local isInitialized = false
 
 -- ====================================
--- NOTIFICATION (ONLY growtopia.notify)
+-- NOTIFICATION (STRICTLY growtopia.notify ONLY)
+-- (NO in-game chat messages / sendChat allowed)
 -- ====================================
 local function notifyUser(text)
     if growtopia and growtopia.notify then
@@ -135,7 +136,8 @@ local function goToDummy(targetX, targetY, session)
         local dx = targetX - px
         local dy = targetY - py
 
-        if dx == 0 and dy == 0 then
+        -- Within wrench interaction range (adjacent <= 1 tile)
+        if math.abs(dx) <= 1 and math.abs(dy) <= 1 then
             break
         end
 
@@ -144,7 +146,7 @@ local function goToDummy(targetX, targetY, session)
 
         -- Step 4-5 tiles towards target
         if math.abs(dx) <= 4 then
-            stepX = targetX
+            stepX = targetX > px and (targetX - 1) or (targetX < px and (targetX + 1) or targetX)
         elseif dx > 0 then
             stepX = px + 4
         else
@@ -169,7 +171,7 @@ local function goToDummy(targetX, targetY, session)
         if pathOk then
             for wait = 1, 15 do
                 local curX, curY = getPosXY()
-                if (curX == stepX and curY == stepY) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
+                if (math.abs(curX - stepX) <= 1 and math.abs(curY - stepY) <= 1) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
                     break
                 end
                 if sleep then sleep(100) end
@@ -506,8 +508,11 @@ function onVariant(var, pkt)
             return true
         end
 
-        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") then
+        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") or dialog:find("The patient survived") or dialog:find("patient died") or dialog:find("Surgery Summary") then
             isSurgeryActive = false
+            if currentOperatingDummy then
+                failedTiles[currentOperatingDummy.x .. "," .. currentOperatingDummy.y] = os.clock() + 180
+            end
         end
 
         local rules = {
