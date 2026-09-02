@@ -15,7 +15,7 @@ local wrenchSessionId = 0
 local keyInputBuffer = "vip"
 local keyStatusText = "Status: [ Verified - VIP Lifetime ]"
 
--- Cleanup old hooks
+-- Cleanup old hooks & module for fresh rerun
 pcall(function()
     if removeHook then
         removeHook("onDrawImGui")
@@ -23,7 +23,14 @@ pcall(function()
         removeHook("on_draw_imgui")
         removeHook("onVariant")
         removeHook("OnVariant")
+        removeHook("on_variant")
+        removeHook("onValue")
+        removeHook("OnValue")
+        removeHook("on_value")
     end
+    if removeCategory then pcall(function() removeCategory("AutoSurg") end) end
+    if removeModule then pcall(function() removeModule("AutoSurg") end) end
+    if addIntoModule then pcall(function() addIntoModule("{}", "AutoSurg") end) end
 end)
 
 -- Safe Notification Helper
@@ -477,6 +484,41 @@ local function handleValue(alias, value)
     elseif alias == "btn_refresh_surg" then
         local act = isSurgeryActive and "OPERATING SURGERY" or (autoWrenchEnabled and "SEARCHING SURG-E" or "STANDBY (IDLE)")
         notifyUser("`9[AutoSurg Status] `oActivity: `2" .. act)
+    elseif alias == "btn_stop_script" then
+        -- 1. Stop all operations and loops
+        autoSurgEnabled = false
+        autoWrenchEnabled = false
+        isSurgeryActive = false
+        currentOperatingDummy = nil
+        wrenchSessionId = (wrenchSessionId or 0) + 1
+
+        -- 2. Remove all hooks
+        pcall(function()
+            if removeHook then
+                removeHook("onDrawImGui")
+                removeHook("OnDrawImGui")
+                removeHook("on_draw_imgui")
+                removeHook("onVariant")
+                removeHook("OnVariant")
+                removeHook("on_variant")
+                removeHook("onValue")
+                removeHook("OnValue")
+                removeHook("on_value")
+            end
+        end)
+
+        -- 3. Clear module and remove category/icon
+        pcall(function()
+            if removeCategory then pcall(function() removeCategory("AutoSurg") end) end
+            if removeModule then pcall(function() removeModule("AutoSurg") end) end
+            if deleteCategory then pcall(function() deleteCategory("AutoSurg") end) end
+            if addIntoModule then
+                pcall(function() addIntoModule("{}", "AutoSurg") end)
+                pcall(function() addIntoModule("[]", "AutoSurg") end)
+            end
+        end)
+
+        notifyUser("`4[AutoSurg] Script Stopped & Unloaded!")
     end
 end
 
@@ -488,6 +530,7 @@ if setOnValue then
         setOnValue("surg_wrench_toggle", function(val) handleValue("surg_wrench_toggle", val) end)
         setOnValue("btn_stop_all_surg", function(val) handleValue("btn_stop_all_surg", val) end)
         setOnValue("btn_refresh_surg", function(val) handleValue("btn_refresh_surg", val) end)
+        setOnValue("btn_stop_script", function(val) handleValue("btn_stop_script", val) end)
     end)
 end
 
@@ -523,6 +566,7 @@ pcall(function()
         ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
         ui:addButton("Refresh Status", "btn_refresh_surg")
         ui:addButton("Stop All Operations", "btn_stop_all_surg")
+        ui:addButton("Stop Script (Unload)", "btn_stop_script")
 
         local json = ui:generateJSON()
 
