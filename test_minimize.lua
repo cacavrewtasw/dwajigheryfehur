@@ -33,18 +33,31 @@ pcall(function()
     if addIntoModule then pcall(function() addIntoModule("{}", "AutoSurg") end) end
 end)
 
--- Safe Notification Helper
+-- Safe Notification Helper (Chat, Console, Overlay, & Toast)
 local function notifyUser(text)
+    -- In-game console / chat message (appears in game chat log)
+    if logToConsole then pcall(function() logToConsole(text) end) end
+    if LogToConsole then pcall(function() LogToConsole(text) end) end
+    if log then pcall(function() log(text) end) end
+    if growtopia and growtopia.sendChat then
+        pcall(function() growtopia.sendChat(text, true) end)
+    end
+
+    -- OnTextOverlay (floating text on screen)
+    if sendVariant then
+        pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
+        pcall(function() sendVariant({ [0] = "OnTextOverlay", [1] = text }) end)
+    end
+
+    -- Growlauncher native notification
     if sendNotification then
         pcall(function() sendNotification(text) end)
     end
     if growtopia and growtopia.notify then
         pcall(function() growtopia.notify(text) end)
-    elseif logToConsole then
-        pcall(function() logToConsole(text) end)
-    elseif print then
-        print(text)
     end
+
+    if print then print(text) end
 end
 
 notifyUser("AutoSurg by zama")
