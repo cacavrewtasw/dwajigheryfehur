@@ -37,7 +37,7 @@ local function notifyUser(text)
     end
 end
 
-notifyUser("`9[AutoSurg Test] `2Module Active! Check `6'AutoSurg' `2or `6'Scripts' `2tab in Growlauncher.")
+notifyUser("AutoSurg by zama")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -69,11 +69,7 @@ local function getTileAt(x, y)
 end
 
 local function enableFly(enable)
-    if toggleCheat then
-        pcall(function() toggleCheat(1, enable) end)
-    elseif setCheat then
-        pcall(function() setCheat("Fly", enable) end)
-    end
+    -- Bot does not fly
 end
 
 local function isTileReachable(tileX, tileY)
@@ -455,7 +451,6 @@ local function handleValue(alias, value)
         end
     elseif alias == "surg_tools_toggle" then
         autoSurgEnabled = value
-        notifyUser(value and "`2[AutoSurg] Tools Enabled!" or "`4[AutoSurg] Tools Disabled!")
     elseif alias == "surg_wrench_toggle" then
         autoWrenchEnabled = value
         if value then
