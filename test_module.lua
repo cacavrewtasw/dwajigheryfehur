@@ -604,48 +604,6 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
--- GROWLAUNCHER NATIVE MODULE UI BUILDER
--- ====================================
-local function buildModuleUI()
-    if not (UserInterface and UserInterface.new) then return end
-
-    local ui = UserInterface.new("AutoSurg", "Verified")
-    ui:addLabelApp("AutoSurg // Zama Store", "Verified")
-    
-    -- AUTH SECTION
-    ui:addButton("Get Key (Free)", "btn_get_key")
-    ui:addInputString("Key", auth_key_input or "", "Enter key", "Type key here", "Info", "input_auth_key")
-    ui:addButton("Verify Key", "btn_verify_key")
-    
-    if is_authenticated then
-        ui:addTooltip("Status: \xE2\x9C\x85 Verified", "Access Granted (" .. user_tier .. ")", "Verified", true)
-    else
-        ui:addTooltip("Status: \xE2\x9D\x8C Not Verified", "Enter Key to Unlock", "Info", false)
-    end
-    
-    ui:addDivider()
-
-    -- SURGERY AUTOMATION CONTROLS
-    ui:addToggle("Master Enable", autoSurgEnabled and autoWrenchEnabled, "surg_master_toggle", false)
-    ui:addToggle("Auto Surg (Tools)", autoSurgEnabled, "surg_tools_toggle", false)
-    ui:addToggle("Auto Wrench Surg-E", autoWrenchEnabled, "surg_wrench_toggle", false)
-    ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
-    ui:addButton("Refresh Status", "btn_refresh_surg")
-    ui:addButton("Stop All Operations", "btn_stop_all_surg")
-    ui:addButton("Stop Script (Unload)", "btn_stop_script")
-
-    local json = ui:generateJSON()
-
-    if addCategory then
-        pcall(function() addCategory("AutoSurg", "Verified") end)
-    end
-
-    if addIntoModule then
-        pcall(function() addIntoModule(json, "AutoSurg") end)
-    end
-end
-
--- ====================================
 -- GROWLAUNCHER NATIVE MODULE INTEGRATION
 -- ====================================
 local function handleValue(alias, value)
@@ -687,12 +645,9 @@ local function handleValue(alias, value)
                     end
                 end
             end)
-
-            buildModuleUI()
         else
             is_authenticated = false
             notifyUser("`4[AutoSurg] Invalid Key! Please get a valid key from Discord.")
-            buildModuleUI()
         end
     -- SURG CONTROL HANDLERS (REQUIRE AUTH)
     elseif alias == "surg_master_toggle" then
@@ -793,8 +748,40 @@ if addHook then
     pcall(function() addHook(OnValue, "onvalue") end)
 end
 
--- Build and Register Native Module UI with Auth
-pcall(buildModuleUI)
+-- Build and Register Native Module UI EXACTLY ONCE
+pcall(function()
+    if UserInterface and UserInterface.new then
+        local ui = UserInterface.new("AutoSurg", "Verified")
+        ui:addLabelApp("AutoSurg // Zama Store", "Verified")
+        
+        -- AUTH SECTION
+        ui:addButton("Get Key (Free)", "btn_get_key")
+        ui:addInputString("Key", auth_key_input or "", "Enter key", "Type key here", "Info", "input_auth_key")
+        ui:addButton("Verify Key", "btn_verify_key")
+        ui:addTooltip("Status: Key Auth", "Click Verify Key to Activate", "Verified", true)
+        
+        ui:addDivider()
+
+        -- SURGERY CONTROLS
+        ui:addToggle("Master Enable", false, "surg_master_toggle", false)
+        ui:addToggle("Auto Surg (Tools)", false, "surg_tools_toggle", false)
+        ui:addToggle("Auto Wrench Surg-E", false, "surg_wrench_toggle", false)
+        ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
+        ui:addButton("Refresh Status", "btn_refresh_surg")
+        ui:addButton("Stop All Operations", "btn_stop_all_surg")
+        ui:addButton("Stop Script (Unload)", "btn_stop_script")
+
+        local json = ui:generateJSON()
+
+        if addCategory then
+            pcall(function() addCategory("AutoSurg", "Verified") end)
+        end
+
+        if addIntoModule then
+            pcall(function() addIntoModule(json, "AutoSurg") end)
+        end
+    end
+end)
 
 if applyHook then pcall(applyHook) end
 
