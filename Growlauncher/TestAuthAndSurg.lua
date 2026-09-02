@@ -20,21 +20,12 @@ end)
 local pref = require and pcall(require, "preferences") and require("preferences") or nil
 local saved = pref and pref.new and pref:new("autosurg_prefs.json") or nil
 
--- ImGui window open by default on script run
+-- ImGui window state (No saved key - requires fresh verification each session)
 local imgui_opened = true
 local is_authenticated = false
-local keyInputBuffer = saved and saved:get("auth_key", "") or ""
+local keyInputBuffer = ""
 local user_tier = "FREE"
 local keyStatusText = "Status: [ Not Verified ]"
-
-if keyInputBuffer ~= "" then
-    local k = keyInputBuffer:gsub("%s+", "")
-    if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
-        is_authenticated = true
-        user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
-        keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
-    end
-end
 
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
@@ -598,8 +589,7 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
--- ROBUST IMGUI BUTTON RENDERER
--- (Prevents squished 2px buttons in Growlauncher)
+-- CRISP & WORKING IMGUI BUTTON RENDERER
 -- ====================================
 local function safeTextColored(r, g, b, text)
     local ok = false
@@ -616,7 +606,6 @@ local function customBtn(label, w, h)
     local height = h or 26
     local clicked = false
 
-    -- Growlauncher binding supports (label, width, height)
     local ok = pcall(function()
         clicked = ImGui.Button(label, width, height)
     end)
@@ -652,12 +641,11 @@ function onDrawImGui(delta)
             imgui_opened = false
             if editToggle then pcall(function() editToggle("enable_autosurg_imgui", false) end) end
             if editValue then pcall(function() editValue("enable_autosurg_imgui", false) end) end
-            if saved then saved:set("opened", false) saved:save() end
         end
 
         if ImGui.Separator then ImGui.Separator() end
 
-        -- 2. AUTHENTICATION SECTION
+        -- 2. AUTHENTICATION SECTION (MURNI HANYA DI IMGUI - NO AUTO-SAVE)
         safeTextColored(1.0, 0.84, 0.0, "=== KEY AUTHENTICATION ===")
         if customBtn("Get Key (Free)##get_key_btn", 0, 26) then
             notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
@@ -679,11 +667,6 @@ function onDrawImGui(delta)
                 user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
                 keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
                 notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
-
-                if saved then
-                    saved:set("auth_key", keyInputBuffer)
-                    saved:save()
-                end
             else
                 is_authenticated = false
                 keyStatusText = "Status: [ Invalid Key! ]"
@@ -790,36 +773,11 @@ OnDrawImGui = onDrawImGui
 
 -- ====================================
 -- GROWLAUNCHER NATIVE MODULE
--- (Auth Section DI ATAS Enable ImGui)
+-- (Bersih murni hanya toggle ImGui & status, NO AUTH DISINI)
 -- ====================================
 function onValue(type, name, value)
-    if name == "input_auth_key" then
-        keyInputBuffer = tostring(value or "")
-    elseif name == "btn_get_key" then
-        notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
-    elseif name == "btn_verify_key" then
-        local k = (keyInputBuffer or ""):gsub("%s+", "")
-        if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
-            is_authenticated = true
-            user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
-            keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
-            notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
-
-            if saved then
-                saved:set("auth_key", keyInputBuffer)
-                saved:save()
-            end
-        else
-            is_authenticated = false
-            keyStatusText = "Status: [ Invalid Key! ]"
-            notifyUser("`4[AutoSurg] Invalid Key! Get key from Discord: discord.gg/ekuVdjF4F9")
-        end
-    elseif name == "enable_autosurg_imgui" then
+    if name == "enable_autosurg_imgui" then
         imgui_opened = value
-        if saved then
-            saved:set("opened", value)
-            saved:save()
-        end
         if value then
             notifyUser("`2[AutoSurg] ImGui Window Opened")
         else
@@ -862,25 +820,16 @@ end
 if applyHook then pcall(applyHook) end
 
 -- Build and Register Native Module UI under ImGui Category
--- DENGAN AUTH DI ATAS ENABLE IMGUI SESUAI PERMINTAAN USER
+-- HANYA TOGGLE ENABLE IMGUI & KONTROL DASAR, NO AUTH DISINI!
 pcall(function()
     if UserInterface and UserInterface.new then
         local ui = UserInterface.new("AutoSurg", "Wysiwyg")
         ui:addLabelApp("AutoSurg", "Wysiwyg")
         ui:addTooltip("Information", "Surg-E & Surgery Automation // Zama Store", "Info", false)
 
-        -- 1. AUTH SECTION DI ATAS ENABLE IMGUI!
-        ui:addButton("Get Key (Free)", "btn_get_key")
-        ui:addInputString("Key", keyInputBuffer or "", "Enter key", "Type key here", "Info", "input_auth_key")
-        ui:addButton("Verify Key", "btn_verify_key")
-        ui:addTooltip(keyStatusText, is_authenticated and "Access Granted" or "Click Verify Key to Activate", "Verified", true)
-
-        ui:addDivider()
-
-        -- 2. ENABLE IMGUI TOGGLE
+        -- HANYA TOGGLE ON/OFF IMGUI
         ui:addToggle("Enable ImGui", true, "enable_autosurg_imgui", false)
 
-        -- 3. BUTTONS
         ui:addButton("Refresh Status", "btn_refresh_surg")
         ui:addButton("Stop Script (Unload)", "btn_stop_script")
 
