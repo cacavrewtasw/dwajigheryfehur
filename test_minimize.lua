@@ -37,7 +37,7 @@ local function notifyUser(text)
     end
 end
 
-notifyUser("`9[AutoSurg Test] `2UI Updated! Opening Clean Vend Menu...")
+notifyUser("`9[AutoSurg Test] `2Script Active! Tap `6[+] OPEN MENU `2on the floating icon.")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -308,135 +308,117 @@ local function safeColoredText(colorVec, text)
     end
 end
 
-local isMenuOpen = true
+local isMinimized = true
 
 local function zamaImGuiLoop()
-    -- ============================================================
-    -- 1. FLOATING ICON BUTTON (When Menu is Closed)
-    -- ============================================================
-    if not isMenuOpen then
-        local iconFlags = 1 + 2 + 64 -- NoTitleBar (1) + NoResize (2) + AlwaysAutoResize (64)
-        if ImGui.SetNextWindowSize and ImVec2 then
-            pcall(function() ImGui.SetNextWindowSize(ImVec2(75, 45), 4) end)
-        end
-
-        local visible = ImGui.Begin("##surg_floating_icon", true, iconFlags)
-        if visible then
-            local iconLabel = isSurgeryActive and "[*] Surg" or (autoWrenchEnabled and "[~] Surg" or "[+] Surg")
-            if ImGui.Button(iconLabel .. "##open_surg_menu") then
-                isMenuOpen = true
-            end
-        end
-        ImGui.End()
-        return
-    end
-
-    -- ============================================================
-    -- 2. FULL AUTOSURG MENU (When Menu is Open)
-    -- ============================================================
+    -- Ensure dynamic size based on minimized state
     if ImGui.SetNextWindowSize and ImVec2 then
-        pcall(function() ImGui.SetNextWindowSize(ImVec2(310, 360), 4) end)
+        if isMinimized then
+            pcall(function() ImGui.SetNextWindowSize(ImVec2(120, 68), 1) end)
+        else
+            pcall(function() ImGui.SetNextWindowSize(ImVec2(310, 360), 1) end)
+        end
     end
 
     local currentTier = _G.USER_TIER or user_tier or "PREMIUM"
-    local winTitle = "AutoSurg // ZAMA STORE##main_win"
-    if currentTier == "PREMIUM" then
-        winTitle = "AutoSurg [PREMIUM VIP]##main_win"
-    elseif currentTier == "FREE" then
-        winTitle = "AutoSurg [FREE TIER]##main_win"
-    end
+    local winTitle = isMinimized and "AutoSurg##main_ctrl" or ("AutoSurg [" .. currentTier .. "]##main_ctrl")
 
-    -- Passing 'true' enables the [X] close button on the window title bar
-    local visible, open_state = ImGui.Begin(winTitle, true)
-
-    -- If user clicks [X] on title bar, switch back to floating icon
-    if open_state == false then
-        isMenuOpen = false
-        ImGui.End()
-        return
-    end
-
-    if visible then
-        -- Header line
-        if currentTier == "PREMIUM" then
-            safeColoredText({1, 0.84, 0, 1}, "[*] USER: PREMIUM VIP")
-        else
-            safeColoredText({0.3, 0.85, 1, 1}, "[i] USER: FREE TRIAL")
-        end
-
-        -- Header [X] button for mobile touch friendly closing
-        ImGui.SameLine()
-        if ImGui.Button("[X] Hide##close_to_icon_btn") then
-            isMenuOpen = false
-            ImGui.End()
-            return
-        end
-
-        if ImGui.Separator then ImGui.Separator() end
-
-        -- SECTION 1: SURGERY TOOLS
-        safeColoredText({0.35, 0.85, 1, 1}, "=== SURGERY ASSISTANT ===")
-        ImGui.Text("Auto Surg (Tools)")
-        ImGui.SameLine()
-        if autoSurgEnabled then
-            if ImGui.Button("[ ON ]##surg_btn") then
-                autoSurgEnabled = false
-                notifyUser("`4AutoSurg Disabled")
+    if ImGui.Begin(winTitle) then
+        if isMinimized then
+            -- ============================================================
+            -- 1. FLOATING ICON MODE
+            -- ============================================================
+            local btnSize = (ImVec2 and ImVec2(-1, 28)) or nil
+            if ImGui.Button("[+] OPEN##open_full_btn", btnSize) then
+                isMinimized = false
             end
+
+            -- Small live activity label
+            local actText = isSurgeryActive and "Operating" or (autoWrenchEnabled and "Searching" or "Standby")
+            local actColor = isSurgeryActive and {0.2, 1, 0.2, 1} or (autoWrenchEnabled and {1, 1, 0.3, 1} or {0.6, 0.6, 0.6, 1})
+            safeColoredText(actColor, actText)
         else
-            if ImGui.Button("[ OFF ]##surg_btn") then
-                autoSurgEnabled = true
-                notifyUser("`2AutoSurg Enabled")
+            -- ============================================================
+            -- 2. FULL AUTOSURG MENU MODE
+            -- ============================================================
+            if currentTier == "PREMIUM" then
+                safeColoredText({1, 0.84, 0, 1}, "[*] USER: PREMIUM VIP")
+            else
+                safeColoredText({0.3, 0.85, 1, 1}, "[i] USER: FREE TRIAL")
             end
-        end
 
-        -- SECTION 2: SURG-E AUTOMATION
-        if ImGui.Separator then ImGui.Separator() end
-        safeColoredText({1, 0.8, 0.3, 1}, "=== SURG-E AUTOMATION ===")
-        ImGui.Text("Auto Wrench Surg-e")
-        ImGui.SameLine()
-        if autoWrenchEnabled then
-            if ImGui.Button("[ ON ]##wrench_btn") then
-                autoWrenchEnabled = false
-                isSurgeryActive = false
-                currentOperatingDummy = nil
-                lowSupplyItem = nil
-                wrenchSessionId = (wrenchSessionId or 0) + 1
-                enableFly(false)
-                notifyUser("`4Auto Wrench Disabled")
+            -- Top-Right [X] Minimize button to return to floating icon
+            ImGui.SameLine()
+            if ImGui.Button("[X] Minimize##min_to_icon_btn") then
+                isMinimized = true
             end
-        else
-            if ImGui.Button("[ OFF ]##wrench_btn") then
-                autoWrenchEnabled = true
-                notifyUser("`2Auto Wrench Enabled")
-                startAutoWrenchLoop()
+
+            if ImGui.Separator then ImGui.Separator() end
+
+            -- SECTION 1: SURGERY TOOLS
+            safeColoredText({0.35, 0.85, 1, 1}, "=== SURGERY ASSISTANT ===")
+            ImGui.Text("Auto Surg (Tools)")
+            ImGui.SameLine()
+            if autoSurgEnabled then
+                if ImGui.Button("[ ON ]##surg_btn") then
+                    autoSurgEnabled = false
+                    notifyUser("`4AutoSurg Disabled")
+                end
+            else
+                if ImGui.Button("[ OFF ]##surg_btn") then
+                    autoSurgEnabled = true
+                    notifyUser("`2AutoSurg Enabled")
+                end
             end
-        end
 
-        -- SECTION 3: STEPPED 4-5 TILE PATHFINDING INFO
-        if ImGui.Separator then ImGui.Separator() end
-        safeColoredText({0.4, 0.9, 0.6, 1}, "Movement: 4-5 Tile Clamped (Anti-Kick)")
+            -- SECTION 2: SURG-E AUTOMATION
+            if ImGui.Separator then ImGui.Separator() end
+            safeColoredText({1, 0.8, 0.3, 1}, "=== SURG-E AUTOMATION ===")
+            ImGui.Text("Auto Wrench Surg-e")
+            ImGui.SameLine()
+            if autoWrenchEnabled then
+                if ImGui.Button("[ ON ]##wrench_btn") then
+                    autoWrenchEnabled = false
+                    isSurgeryActive = false
+                    currentOperatingDummy = nil
+                    lowSupplyItem = nil
+                    wrenchSessionId = (wrenchSessionId or 0) + 1
+                    enableFly(false)
+                    notifyUser("`4Auto Wrench Disabled")
+                end
+            else
+                if ImGui.Button("[ OFF ]##wrench_btn") then
+                    autoWrenchEnabled = true
+                    notifyUser("`2Auto Wrench Enabled")
+                    startAutoWrenchLoop()
+                end
+            end
 
-        -- SECTION 4: LIVE STATUS
-        if ImGui.Separator then ImGui.Separator() end
-        ImGui.Text("Activity Status:")
-        ImGui.SameLine()
-        if isSurgeryActive then
-            safeColoredText({0.2, 1, 0.2, 1}, "OPERATING SURGERY...")
-        elseif autoWrenchEnabled then
-            safeColoredText({1, 1, 0.3, 1}, "SEARCHING SURG-E...")
-        else
-            safeColoredText({0.6, 0.6, 0.6, 1}, "STANDBY (IDLE)")
-        end
+            -- SECTION 3: STEPPED 4-5 TILE PATHFINDING INFO
+            if ImGui.Separator then ImGui.Separator() end
+            safeColoredText({0.4, 0.9, 0.6, 1}, "Movement: 4-5 Tile Clamped (Anti-Kick)")
 
-        -- FOOTER
-        if ImGui.Separator then ImGui.Separator() end
-        if currentTier == "FREE" then
-            safeColoredText({1, 0.75, 0.2, 1}, "[*] Upgrade to Premium at discord.gg/ekuVdjF4F9")
-        else
-            safeColoredText({0.4, 1, 0.4, 1}, "[*] VIP Lifetime Active")
+            -- SECTION 4: LIVE STATUS
+            if ImGui.Separator then ImGui.Separator() end
+            ImGui.Text("Activity Status:")
+            ImGui.SameLine()
+            if isSurgeryActive then
+                safeColoredText({0.2, 1, 0.2, 1}, "OPERATING SURGERY...")
+            elseif autoWrenchEnabled then
+                safeColoredText({1, 1, 0.3, 1}, "SEARCHING SURG-E...")
+            else
+                safeColoredText({0.6, 0.6, 0.6, 1}, "STANDBY (IDLE)")
+            end
+
+            -- FOOTER
+            if ImGui.Separator then ImGui.Separator() end
+            if currentTier == "FREE" then
+                safeColoredText({1, 0.75, 0.2, 1}, "[*] Upgrade to Premium at discord.gg/ekuVdjF4F9")
+            else
+                safeColoredText({0.4, 1, 0.4, 1}, "[*] VIP Lifetime Active")
+            end
+            safeColoredText({0.5, 0.7, 1, 1}, "Discord: discord.gg/ekuVdjF4F9")
         end
-        safeColoredText({0.5, 0.7, 1, 1}, "Discord: discord.gg/ekuVdjF4F9")
 
         ImGui.End()
     else
