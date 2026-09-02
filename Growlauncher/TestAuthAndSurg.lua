@@ -598,58 +598,9 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
--- PURPLE IMGUI INTERFACE & CONTROLS
+-- CLEAN & CRISP IMGUI INTERFACE
+-- (Standard ImGui layout matching AutoSurg.lua)
 -- ====================================
-local function purpleButton(label, height)
-    local h = height or 28
-    local pushed = false
-    if ImGui and ImGui.PushStyleColor and ImVec4 then
-        pcall(function()
-            ImGui.PushStyleColor(21, ImVec4(0.48, 0.36, 0.98, 1.0))
-            ImGui.PushStyleColor(22, ImVec4(0.58, 0.46, 1.00, 1.0))
-            ImGui.PushStyleColor(23, ImVec4(0.40, 0.28, 0.88, 1.0))
-            pushed = true
-        end)
-    end
-
-    local clicked = false
-    if ImVec2 then
-        clicked = ImGui.Button(label, ImVec2(-1, h))
-    else
-        clicked = ImGui.Button(label)
-    end
-
-    if pushed and ImGui and ImGui.PopStyleColor then
-        pcall(function() ImGui.PopStyleColor(3) end)
-    end
-    return clicked
-end
-
-local function darkButton(label, height)
-    local h = height or 28
-    local pushed = false
-    if ImGui and ImGui.PushStyleColor and ImVec4 then
-        pcall(function()
-            ImGui.PushStyleColor(21, ImVec4(0.18, 0.19, 0.26, 1.0))
-            ImGui.PushStyleColor(22, ImVec4(0.24, 0.26, 0.35, 1.0))
-            ImGui.PushStyleColor(23, ImVec4(0.14, 0.15, 0.20, 1.0))
-            pushed = true
-        end)
-    end
-
-    local clicked = false
-    if ImVec2 then
-        clicked = ImGui.Button(label, ImVec2(-1, h))
-    else
-        clicked = ImGui.Button(label)
-    end
-
-    if pushed and ImGui and ImGui.PopStyleColor then
-        pcall(function() ImGui.PopStyleColor(3) end)
-    end
-    return clicked
-end
-
 local function safeTextColored(r, g, b, text)
     local ok = false
     if ImGui and ImGui.TextColored and ImVec4 then
@@ -663,16 +614,16 @@ end
 function onDrawImGui(delta)
     if not imgui_opened then return end
 
-    if ImGui.SetNextWindowSize and ImVec2 then
-        pcall(function() ImGui.SetNextWindowSize(ImVec2(330, 480), 4) end)
+    if ImGui.SetNextWindowSize and ImVec2 and ImGui.Cond then
+        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 360), ImGui.Cond.FirstUseEver or 4) end)
     end
 
     if ImGui.Begin("AutoSurg // Zama Store") then
-        -- 1. HEADER & HIDE BUTTON
+        -- 1. Header & Close Button
         safeTextColored(0.70, 0.60, 1.0, "[*] AutoSurg // Zama Store")
         safeTextColored(0.65, 0.68, 0.78, "Surg-E & Surgery Automation")
         if ImGui.SameLine then ImGui.SameLine() end
-        if darkButton("Hide GUI##hide_top", 22) then
+        if ImGui.Button("Hide GUI##hide_top") then
             imgui_opened = false
             if editToggle then pcall(function() editToggle("enable_autosurg_imgui", false) end) end
             if editValue then pcall(function() editValue("enable_autosurg_imgui", false) end) end
@@ -681,13 +632,13 @@ function onDrawImGui(delta)
 
         if ImGui.Separator then ImGui.Separator() end
 
-        -- 2. AUTH SECTION
+        -- 2. AUTHENTICATION SECTION
         safeTextColored(1.0, 0.84, 0.0, "=== KEY AUTHENTICATION ===")
-        if purpleButton("Get Key (Free)##get_key_btn", 28) then
+        if ImGui.Button("Get Key (Free)##get_key_btn") then
             notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
         end
 
-        ImGui.Text("Key:")
+        ImGui.Text("Enter Key:")
         if ImGui.InputText then
             local changed, newTxt = ImGui.InputText("##key_in", keyInputBuffer, 64)
             if changed and newTxt then
@@ -695,7 +646,8 @@ function onDrawImGui(delta)
             end
         end
 
-        if purpleButton("Verify Key##verify_btn", 28) then
+        ImGui.SameLine()
+        if ImGui.Button("Verify Key##verify_btn") then
             local k = (keyInputBuffer or ""):gsub("%s+", "")
             if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
                 is_authenticated = true
@@ -727,61 +679,69 @@ function onDrawImGui(delta)
         safeTextColored(0.35, 0.85, 1.0, "=== SURGERY AUTOMATION ===")
 
         -- Master Enable Toggle Button
+        ImGui.Text("Master Enable:     ")
+        ImGui.SameLine()
         local masterActive = autoSurgEnabled and autoWrenchEnabled
-        local masterBtnLabel = masterActive and "Master Enable: [ ON ]##master_tog" or "Master Enable: [ OFF ]##master_tog"
-        local masterClicked = masterActive and purpleButton(masterBtnLabel, 30) or darkButton(masterBtnLabel, 30)
-
-        if masterClicked then
-            if not is_authenticated then
-                notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
-            else
-                local newState = not masterActive
-                autoSurgEnabled = newState
-                autoWrenchEnabled = newState
-                if newState then
+        if masterActive then
+            if ImGui.Button("[ ON ]##master_tog") then
+                autoSurgEnabled = false
+                autoWrenchEnabled = false
+                isSurgeryActive = false
+                currentOperatingDummy = nil
+                enableFly(false)
+                notifyUser("`4[AutoSurg] Master Disabled!")
+            end
+        else
+            if ImGui.Button("[ OFF ]##master_tog") then
+                if not is_authenticated then
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                else
+                    autoSurgEnabled = true
+                    autoWrenchEnabled = true
                     notifyUser("`2[AutoSurg] Master Enabled!")
                     startAutoWrenchLoop()
-                else
-                    notifyUser("`4[AutoSurg] Master Disabled!")
-                    isSurgeryActive = false
-                    currentOperatingDummy = nil
-                    enableFly(false)
                 end
             end
         end
 
         -- Auto Surg (Tools) Button
-        local surgLabel = autoSurgEnabled and "Auto Surg (Tools) [ ON ]##surg_tog" or "Auto Surg (Tools) [ OFF ]##surg_tog"
-        local surgClicked = autoSurgEnabled and purpleButton(surgLabel, 28) or darkButton(surgLabel, 28)
-        if surgClicked then
-            if not is_authenticated then
-                notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
-            else
-                autoSurgEnabled = not autoSurgEnabled
-                if autoSurgEnabled then
-                    notifyUser("`2Auto Surg Tools Enabled")
+        ImGui.Text("Auto Surg (Tools): ")
+        ImGui.SameLine()
+        if autoSurgEnabled then
+            if ImGui.Button("[ ON ]##surg_tog") then
+                autoSurgEnabled = false
+                notifyUser("`4Auto Surg Tools Disabled")
+            end
+        else
+            if ImGui.Button("[ OFF ]##surg_tog") then
+                if not is_authenticated then
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
                 else
-                    notifyUser("`4Auto Surg Tools Disabled")
+                    autoSurgEnabled = true
+                    notifyUser("`2Auto Surg Tools Enabled")
                 end
             end
         end
 
         -- Auto Wrench Surg-E Button
-        local wrenchLabel = autoWrenchEnabled and "Auto Wrench Surg-E [ ON ]##wrench_tog" or "Auto Wrench Surg-E [ OFF ]##wrench_tog"
-        local wrenchClicked = autoWrenchEnabled and purpleButton(wrenchLabel, 28) or darkButton(wrenchLabel, 28)
-        if wrenchClicked then
-            if not is_authenticated then
-                notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
-            else
-                autoWrenchEnabled = not autoWrenchEnabled
-                if autoWrenchEnabled then
+        ImGui.Text("Auto Wrench Surg-E:")
+        ImGui.SameLine()
+        if autoWrenchEnabled then
+            if ImGui.Button("[ ON ]##wrench_tog") then
+                autoWrenchEnabled = false
+                isSurgeryActive = false
+                currentOperatingDummy = nil
+                enableFly(false)
+                notifyUser("`4Auto Wrench Disabled")
+            end
+        else
+            if ImGui.Button("[ OFF ]##wrench_tog") then
+                if not is_authenticated then
+                    notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
+                else
+                    autoWrenchEnabled = true
                     notifyUser("`2Auto Wrench Enabled")
                     startAutoWrenchLoop()
-                else
-                    notifyUser("`4Auto Wrench Disabled")
-                    isSurgeryActive = false
-                    currentOperatingDummy = nil
-                    enableFly(false)
                 end
             end
         end
@@ -792,7 +752,7 @@ function onDrawImGui(delta)
         local actText = isSurgeryActive and "OPERATING SURGERY..." or (autoWrenchEnabled and "SEARCHING SURG-E..." or "STANDBY (IDLE)")
         safeTextColored(0.4, 0.85, 1.0, "Activity: " .. actText)
 
-        if purpleButton("Refresh Status##refresh_btn", 26) then
+        if ImGui.Button("Refresh Status##refresh_btn") then
             notifyUser("`9[AutoSurg Status] `oActivity: `2" .. actText)
         end
 
@@ -804,10 +764,32 @@ end
 OnDrawImGui = onDrawImGui
 
 -- ====================================
--- GROWLAUNCHER NATIVE MODULE (TOGGLE ON/OFF IMGUI)
+-- GROWLAUNCHER NATIVE MODULE
+-- (Auth Section DI ATAS Enable ImGui)
 -- ====================================
 function onValue(type, name, value)
-    if name == "enable_autosurg_imgui" then
+    if name == "input_auth_key" then
+        keyInputBuffer = tostring(value or "")
+    elseif name == "btn_get_key" then
+        notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
+    elseif name == "btn_verify_key" then
+        local k = (keyInputBuffer or ""):gsub("%s+", "")
+        if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
+            is_authenticated = true
+            user_tier = (k == "vip" or k == "premium") and "PREMIUM" or "FREE"
+            keyStatusText = "Status: [ Verified (" .. user_tier .. ") ]"
+            notifyUser("`2[AutoSurg] Key Verified! Access Granted (" .. user_tier .. ")")
+
+            if saved then
+                saved:set("auth_key", keyInputBuffer)
+                saved:save()
+            end
+        else
+            is_authenticated = false
+            keyStatusText = "Status: [ Invalid Key! ]"
+            notifyUser("`4[AutoSurg] Invalid Key! Get key from Discord: discord.gg/ekuVdjF4F9")
+        end
+    elseif name == "enable_autosurg_imgui" then
         imgui_opened = value
         if saved then
             saved:set("opened", value)
@@ -855,12 +837,25 @@ end
 if applyHook then pcall(applyHook) end
 
 -- Build and Register Native Module UI under ImGui Category
+-- DENGAN AUTH DI ATAS ENABLE IMGUI SESUAI PERMINTAAN USER
 pcall(function()
     if UserInterface and UserInterface.new then
         local ui = UserInterface.new("AutoSurg", "Wysiwyg")
         ui:addLabelApp("AutoSurg", "Wysiwyg")
         ui:addTooltip("Information", "Surg-E & Surgery Automation // Zama Store", "Info", false)
+
+        -- 1. AUTH SECTION DI ATAS ENABLE IMGUI!
+        ui:addButton("Get Key (Free)", "btn_get_key")
+        ui:addInputString("Key", keyInputBuffer or "", "Enter key", "Type key here", "Info", "input_auth_key")
+        ui:addButton("Verify Key", "btn_verify_key")
+        ui:addTooltip(keyStatusText, is_authenticated and "Access Granted" or "Click Verify Key to Activate", "Verified", true)
+
+        ui:addDivider()
+
+        -- 2. ENABLE IMGUI TOGGLE
         ui:addToggle("Enable ImGui", true, "enable_autosurg_imgui", false)
+
+        -- 3. BUTTONS
         ui:addButton("Refresh Status", "btn_refresh_surg")
         ui:addButton("Stop Script (Unload)", "btn_stop_script")
 
