@@ -34,35 +34,12 @@ pcall(function()
     if addIntoModule then pcall(function() addIntoModule("{}", "AutoSurg") end) end
 end)
 
--- Safe Notification Helper (Chat, Console, Overlay, & Toast)
+-- Safe Notification Helper (growtopia.notify ONLY)
 local function notifyUser(text)
-    -- In-game console / chat message (appears in game chat log)
-    if logToConsole then pcall(function() logToConsole(text) end) end
-    if LogToConsole then pcall(function() LogToConsole(text) end) end
-    if log then pcall(function() log(text) end) end
-    if growtopia and growtopia.sendChat then
-        pcall(function() growtopia.sendChat(text, true) end)
-    end
-
-    -- OnTextOverlay (floating text on screen)
-    -- OnTextOverlay (floating text on screen - single clean render)
-    if sendVariant then
-        pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
-        pcall(function() sendVariant({ [0] = "OnTextOverlay", [1] = text }) end)
-    end
-
-    -- Growlauncher native notification
-    if sendNotification then
-        pcall(function() sendNotification(text) end)
-    end
     if growtopia and growtopia.notify then
         pcall(function() growtopia.notify(text) end)
     end
-
-    if print then print(text) end
 end
-
-notifyUser("AutoSurg by zama")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -93,22 +70,67 @@ local function getTileAt(x, y)
     return nil
 end
 
-local function enableFly(state)
-    if editToggle then pcall(function() editToggle("ModFly", state) end) end
-    if EditToggle then pcall(function() EditToggle("ModFly", state) end) end
-    if editValue then pcall(function() editValue("ModFly", state) end) end
-    if EditValue then pcall(function() EditValue("ModFly", state) end) end
-    if setValue then pcall(function() setValue("ModFly", state) end) end
-    if SetValue then pcall(function() SetValue("ModFly", state) end) end
-    pcall(function() if editToggle then editToggle("Fly", state) end end)
-    pcall(function() if editValue then editValue("Fly", state) end end)
-    if state then
-        pcall(function()
-            if sendPacket then
-                sendPacket(2, "action|input\n|text|/fly\n")
-                sendPacket(2, "action|input\n|text|/modfly\n")
-            end
-        end)
+local function enableFly(enable)
+    -- Bot does not fly
+end
+
+local function getAllTiles()
+    if getTiles then return getTiles()
+    elseif GetTiles then return GetTiles()
+    end
+    return {}
+end
+
+local function getObjects()
+    if getObjectList then return getObjectList()
+    elseif GetObjectList then return GetObjectList()
+    end
+    return {}
+end
+
+local function hoverAt(tx, ty)
+    local px = tx * 32
+    local py = ty * 32
+
+    if sendVariant then
+        pcall(function() sendVariant({ v1 = "OnSetPos", v2 = { px, py } }) end)
+        pcall(function() sendVariant({ [0] = "OnSetPos", [1] = { px, py } }) end)
+        pcall(function() sendVariant({ "OnSetPos", { px, py } }) end)
+    end
+
+    local pkt = {
+        type = 0,
+        x = px,
+        y = py,
+        px = tx,
+        py = ty,
+        xspeed = 0,
+        yspeed = 0
+    }
+    if sendPacketRaw then sendPacketRaw(false, pkt)
+    elseif SendPacketRaw then SendPacketRaw(false, pkt)
+    end
+end
+
+local function collectRaw(objId, posX, posY)
+    if spr then
+        spr(11, objId, posX, posY)
+    elseif sendPacketRaw then
+        sendPacketRaw(false, {type = 11, value = objId, px = math.floor(posX/32), py = math.floor(posY/32), x = posX, y = posY})
+    elseif SendPacketRaw then
+        SendPacketRaw(false, {type = 11, value = objId, px = math.floor(posX/32), py = math.floor(posY/32), x = posX, y = posY})
+    end
+end
+
+local function Collect()
+    local px, py = getPosXY()
+    for _, obj in pairs(getObjects()) do
+        local ox = math.floor(obj.posX / 32)
+        local oy = math.floor(obj.posY / 32)
+
+        if math.abs(ox - px) <= 5 and math.abs(oy - py) <= 5 then
+            collectRaw(obj.id, obj.posX, obj.posY)
+        end
     end
 end
 
@@ -233,13 +255,13 @@ local item_ids = {
 }
 
 local function getItemIdByName(name)
-    if type(name) == "number" then return name end
-    if type(name) == "string" then
+    local id = findItemID and findItemID(name)
+    if not id or id == 0 or id == -1 then
         if name:find("Stitches") then return 1270
-        elseif name:find("Antibiotic") then return 1266
-        elseif name:find("Antiseptic") then return 1264
-        elseif name:find("Anesthetic") then return 1262
         elseif name:find("Scalpel") then return 1260
+        elseif name:find("Anesthetic") then return 1262
+        elseif name:find("Antiseptic") then return 1264
+        elseif name:find("Antibiotic") then return 1266
         elseif name:find("Splint") then return 1268
         elseif name:find("Sponge") then return 1258
         elseif name:find("Defibrillator") then return 4312
@@ -251,18 +273,18 @@ local function getItemIdByName(name)
         elseif name:find("Fix it") then return 1296
         end
     end
-    return 1270
+    return id or 1270
 end
 
 local function useTool(tool)
     local toolId = getItemIdByName(tool)
     local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(toolId) .. "\n"
-    notifyUser("`9[AutoSurg] `oUsing: `2" .. tostring(tool))
     if sendPacket then
         sendPacket(2, pkt)
     elseif SendPacket then
         SendPacket(2, pkt)
     end
+    notifyUser("`9[`cTools`9] `c" .. tostring(tool))
 end
 
 local function wrenchDummy(x, y)
@@ -307,6 +329,56 @@ local function scanForSurgEDummy()
     return bestTile
 end
 
+local function turnOffAutoSurg(reason)
+    autoWrenchEnabled = false
+    autoSurgEnabled = false
+    isSurgeryActive = false
+    currentOperatingDummy = nil
+    wrenchSessionId = (wrenchSessionId or 0) + 1
+    enableFly(false)
+
+    -- Keep the module toggles in sync with the actual state
+    if editValue then
+        pcall(function() editValue("surg_master_toggle", false) end)
+        pcall(function() editValue("surg_tools_toggle", false) end)
+        pcall(function() editValue("surg_wrench_toggle", false) end)
+    end
+
+    notifyUser("`4[AutoSurg] " .. (reason or "No target object found") .. " - AutoSurg & Surg-E turned OFF!")
+end
+
+-- Tools habis: scan object (dropped item) dulu sebelum mematikan automation
+local function handleLowSupply(itemToFind, session)
+    local targetId = getItemIdByName(itemToFind or "Surgical Stitches")
+
+    notifyUser("`6[Auto Surg-E]`4 Low Supply! `oScanning for dropped items...")
+
+    local foundObj = nil
+    for _, obj in pairs(getObjects()) do
+        if obj.itemid == targetId then
+            foundObj = obj
+            break
+        end
+    end
+
+    if foundObj then
+        local ox = math.floor(foundObj.posX / 32)
+        local oy = math.floor(foundObj.posY / 32)
+
+        notifyUser("`2[Auto Surg-E]`o Moving to supplies at (" .. ox .. ", " .. oy .. ")")
+
+        goToDummy(ox, oy, session)
+        if sleep then sleep(300) end
+        Collect()
+        if sleep then sleep(500) end
+        Collect()
+        if sleep then sleep(500) end
+    else
+        -- Tidak ada object target ditemukan -> matikan autosurg-e dan auto surg
+        turnOffAutoSurg("No " .. (itemToFind or "Stitches") .. " object found")
+    end
+end
+
 local function startAutoWrenchLoop()
     if autoWrenchRunning then return end
     autoWrenchRunning = true
@@ -316,7 +388,11 @@ local function startAutoWrenchLoop()
     local function loop()
         enableFly(true)
         while autoWrenchEnabled and mySession == wrenchSessionId do
-            if not isSurgeryActive then
+            if lowSupplyItem then
+                local itemToFind = lowSupplyItem
+                lowSupplyItem = nil
+                handleLowSupply(itemToFind, mySession)
+            elseif not isSurgeryActive then
                 local dummy = scanForSurgEDummy()
                 if dummy then
                     currentOperatingDummy = dummy
@@ -406,12 +482,8 @@ local function onVariant(var)
             return true
         end
 
-        if dialog:find("You succeeded") then
+        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") then
             isSurgeryActive = false
-            notifyUser("`2[AutoSurg] `aSurgery Succeeded!")
-        elseif dialog:find("You failed") or dialog:find("destroyed in the process") then
-            isSurgeryActive = false
-            notifyUser("`4[AutoSurg] `4Surgery Failed!")
         end
 
         local rules = {
@@ -546,17 +618,12 @@ local function handleValue(alias, value)
         -- 2. Remove all hooks
         pcall(function()
             if removeHook then
-                removeHook("onDrawImGui")
-                removeHook("OnDrawImGui")
-                removeHook("on_draw_imgui")
                 removeHook("onvariant")
                 removeHook("onvalue")
                 removeHook("onVariant")
                 removeHook("OnVariant")
-                removeHook("on_variant")
                 removeHook("onValue")
                 removeHook("OnValue")
-                removeHook("on_value")
             end
         end)
 
