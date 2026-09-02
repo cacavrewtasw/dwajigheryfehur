@@ -1,7 +1,9 @@
 -- ==========================================
 -- TestAuthAndSurg.lua (Growlauncher Test File)
+-- Modern Purple Card UI (Vend Master Style)
 -- ==========================================
-local is_authenticated = false
+local is_authenticated = true -- Enabled by default for direct UI testing!
+local user_tier = "PREMIUM"
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
 local isSurgeryActive = false
@@ -11,113 +13,32 @@ local failedTiles = {}
 local autoWrenchRunning = false
 local wrenchSessionId = 0
 local script_name = "AutoSurg (ZamaStore)"
-local user_tier = "NONE" -- "FREE" or "PREMIUM"
+local enteredKey = "vip"
+local keyStatusText = "Status: `2Verified (VIP Lifetime)``"
 
-pcall(function() removeHook("onVariant") end)
-pcall(function() removeHook("onSendPacket") end)
-pcall(function() removeHook("onDrawImGui") end)
-
-local function verifyKey(key)
-    if key == "1234" then
-        user_tier = "FREE"
-        return true
-    elseif key == "vip" or key == "premium" or key == "12345" then
-        user_tier = "PREMIUM"
-        return true
+-- Cleanup old hooks
+pcall(function()
+    if removeHook then
+        removeHook("onDrawImGui")
+        removeHook("OnDrawImGui")
+        removeHook("on_draw_imgui")
+        removeHook("onVariant")
+        removeHook("OnVariant")
     end
-    return false
+end)
+
+-- Safe Notification Helper
+local function notifyUser(text)
+    if growtopia and growtopia.notify then
+        pcall(function() growtopia.notify(text) end)
+    elseif logToConsole then
+        pcall(function() logToConsole(text) end)
+    elseif print then
+        print(text)
+    end
 end
 
-local function crossSendDialog(dialog)
-    if growtopia and growtopia.sendDialog then
-        growtopia.sendDialog(dialog)
-    elseif sendVariant then
-        pcall(function() sendVariant({v1 = "OnDialogRequest", v2 = dialog}) end)
-    end
-end
-
-local auth_dialog = "set_default_color|`o\n" ..
-    "add_label_with_icon|big|`9ZAMA STORE `w// `cAutoSurg Engine``|left|1374|\n" ..
-    "add_spacer|small|\n" ..
-    "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
-    "add_smalltext|`eLicense Status: `4NOT ACTIVATED``|left|\n" ..
-    "add_smalltext|`wPlease enter your `bSecret License Key`w to unlock features.|left|\n" ..
-    "add_spacer|small|\n" ..
-    "add_textbox|`9[FREE TIER] `oType '`21234`o' for Free Access|left|\n" ..
-    "add_textbox|`6[VIP TIER]  `oType '`6vip`o' for Lifetime Premium VIP|left|\n" ..
-    "add_spacer|small|\n" ..
-    "add_text_input|freekey|Secret Key:||50|\n" ..
-    "add_spacer|small|\n" ..
-    "add_textbox|`oGet official key at: `bdiscord.gg/ekuVdjF4F9|left|\n" ..
-    "end_dialog|test_auth_dialog|Cancel|⚡ UNLOCK ENGINE ⚡|\n"
-
-crossSendDialog(auth_dialog)
-
--- ====================================
--- HOOK OUTGOING (AUTH)
--- ====================================
-local function HookOutgoing(a, b, c)
-    local pkt = ""
-    if type(a) == "string" then pkt = a
-    elseif type(b) == "string" then pkt = b
-    elseif type(c) == "string" then pkt = c
-    end
-
-    if not pkt:find("test_auth_dialog") then return false end
-
-    local key = pkt:match("freekey|([^\n\r]+)")
-    if not key or key == "" then
-        crossSendDialog("set_default_color|`o\n" ..
-            "add_label_with_icon|big|`4ACCESS DENIED `w// `4NO KEY``|left|242|\n" ..
-            "add_spacer|small|\n" ..
-            "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
-            "add_smalltext|`4✖ No key was entered.|left|\n" ..
-            "add_smalltext|`wPlease try again with a valid license key.|left|\n" ..
-            "end_dialog|auth_fail|TRY AGAIN||\n")
-        return true
-    end
-    key = key:match("^%s*(.-)%s*$")
-
-    if verifyKey(key) then
-        if user_tier == "PREMIUM" then
-            crossSendDialog("set_default_color|`o\n" ..
-                "add_label_with_icon|big|`6⭐ PREMIUM VIP `w// `eLIFETIME ACCESS``|left|2480|\n" ..
-                "add_spacer|small|\n" ..
-                "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
-                "add_smalltext|`2✔ VIP Verified: `bLifetime License Active!|left|\n" ..
-                "add_smalltext|`eWelcome back, `6VIP Surgeon`e!|left|\n" ..
-                "add_smalltext|`wAll AutoSurg & Auto Wrench features unlocked.|left|\n" ..
-                "add_spacer|small|\n" ..
-                "add_textbox|`dThank you for supporting Zama Store!|left|\n" ..
-                "add_spacer|small|\n" ..
-                "end_dialog|premium_ok|START SURGERY!||\n")
-        else
-            crossSendDialog("set_default_color|`o\n" ..
-                "add_label_with_icon|big|`2ACCESS GRANTED `w// `aFREE TIER``|left|1374|\n" ..
-                "add_spacer|small|\n" ..
-                "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
-                "add_smalltext|`2✔ License Valid: `eFree Single-Session Active!|left|\n" ..
-                "add_smalltext|`wAutoSurg ImGui menu is now unlocked.|left|\n" ..
-                "add_spacer|small|\n" ..
-                "add_textbox|`6⭐ `eWant permanent access without daily keys?|left|\n" ..
-                "add_textbox|`6⭐ `eUpgrade to `3Premium VIP `ein our Discord!|left|\n" ..
-                "add_spacer|small|\n" ..
-                "add_textbox|`oDiscord: `bdiscord.gg/ekuVdjF4F9|left|\n" ..
-                "end_dialog|auth_ok|START NOW!||\n")
-        end
-        is_authenticated = true
-    else
-        crossSendDialog("set_default_color|`o\n" ..
-            "add_label_with_icon|big|`4ACCESS DENIED `w// `4INVALID KEY``|left|242|\n" ..
-            "add_spacer|small|\n" ..
-            "add_textbox|`o━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|left|\n" ..
-            "add_smalltext|`4✖ Key is invalid, expired, or already used.|left|\n" ..
-            "add_smalltext|`wType '`21234`w' (Free) or '`6vip`w' (Premium) for testing.|left|\n" ..
-            "add_smalltext|`oGet official key at: `bdiscord.gg/ekuVdjF4F9|left|\n" ..
-            "end_dialog|auth_fail|OK||\n")
-    end
-    return true
-end
+notifyUser("`9[AutoSurg Test] `2UI Loaded Successfully! Opening Menu...")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -148,750 +69,448 @@ local function getTileAt(x, y)
     return nil
 end
 
-local function getAllTiles()
-    if getTiles then return getTiles()
-    elseif GetTiles then return GetTiles()
+local function enableFly(enable)
+    if toggleCheat then
+        pcall(function() toggleCheat(1, enable) end)
+    elseif setCheat then
+        pcall(function() setCheat("Fly", enable) end)
     end
-    return {}
 end
 
-local function getObjects()
-    if getObjectList then return getObjectList()
-    elseif GetObjectList then return GetObjectList()
-    end
-    return {}
+local function isTileReachable(tileX, tileY)
+    local t = getTileAt(tileX, tileY)
+    if not t then return true end
+    local fg = t.fg or (t.getFg and t.getFg()) or (t.header and t.header.fg) or 0
+    if fg ~= 0 then return false end
+    return true
 end
 
-local function hoverAt(tx, ty)
-    local px = tx * 32
-    local py = ty * 32
+local function findAdjacentWalkableTile(targetX, targetY)
+    local currentX, currentY = getPosXY()
+    local bestX, bestY = nil, nil
+    local bestDist = 999999
 
-    if sendVariant then
-        pcall(function() sendVariant({ v1 = "OnSetPos", v2 = { px, py } }) end)
-        pcall(function() sendVariant({ [0] = "OnSetPos", [1] = { px, py } }) end)
-        pcall(function() sendVariant({ "OnSetPos", { px, py } }) end)
-    end
-
-    local pkt = {
-        type = 0,
-        x = px,
-        y = py,
-        px = tx,
-        py = ty,
-        xspeed = 0,
-        yspeed = 0
+    local offsets = {
+        {0, 0},
+        {-1, 0}, {1, 0}, {0, -1}, {0, 1},
+        {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
     }
-    if sendPacketRaw then sendPacketRaw(false, pkt)
-    elseif SendPacketRaw then SendPacketRaw(false, pkt)
+
+    for _, off in ipairs(offsets) do
+        local checkX = targetX + off[1]
+        local checkY = targetY + off[2]
+        if isTileReachable(checkX, checkY) then
+            local dist = math.abs(currentX - checkX) + math.abs(currentY - checkY)
+            if dist < bestDist then
+                bestDist = dist
+                bestX = checkX
+                bestY = checkY
+            end
+        end
     end
+
+    if bestX and bestY then
+        return bestX, bestY
+    end
+    return targetX, targetY
 end
 
 local function goToDummy(targetX, targetY, session)
-    local maxTotalSteps = 60
-    local totalSteps = 0
+    local destX, destY = findAdjacentWalkableTile(targetX, targetY)
 
-    while autoWrenchEnabled and (not session or wrenchSessionId == session) and totalSteps < maxTotalSteps do
-        totalSteps = totalSteps + 1
-        local px, py = getPosXY()
-        local dx = targetX - px
-        local dy = targetY - py
-
-        if dx == 0 and dy == 0 then
-            break
+    local function callFindPath(x, y)
+        if findPath then return findPath(x, y)
+        elseif FindPath then return FindPath(x, y)
         end
-
-        local stepX = px
-        local stepY = py
-
-        -- Step 4-5 tiles towards target
-        if math.abs(dx) <= 4 then
-            stepX = targetX
-        elseif dx > 0 then
-            stepX = px + 4
-        else
-            stepX = px - 4
-        end
-
-        if math.abs(dy) <= 4 then
-            stepY = targetY
-        elseif dy > 0 then
-            stepY = py + 4
-        else
-            stepY = py - 4
-        end
-
-        local pathOk = false
-        if FindPath then
-            pcall(function() pathOk = FindPath(stepX, stepY) end)
-        elseif findPath then
-            pcall(function() pathOk = findPath(stepX, stepY) end)
-        end
-
-        if pathOk then
-            for wait = 1, 15 do
-                local curX, curY = getPosXY()
-                if (curX == stepX and curY == stepY) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
-                    break
-                end
-                sleep(100)
-            end
-        else
-            hoverAt(stepX, stepY)
-            sleep(120)
-        end
+        return false
     end
 
-    hoverAt(targetX, targetY)
-    sleep(100)
+    local function checkDistanceToGoal()
+        local curX, curY = getPosXY()
+        return math.abs(curX - targetX) <= 1 and math.abs(curY - targetY) <= 1
+    end
+
+    if checkDistanceToGoal() then
+        return true
+    end
+
+    local maxTries = 40
+    local tries = 0
+
+    while tries < maxTries do
+        if session and (session ~= wrenchSessionId or not autoWrenchEnabled) then
+            return false
+        end
+
+        local curX, curY = getPosXY()
+        if checkDistanceToGoal() then
+            return true
+        end
+
+        local diffX = destX - curX
+        local diffY = destY - curY
+        local stepX = math.max(-4, math.min(4, diffX))
+        local stepY = math.max(-4, math.min(4, diffY))
+
+        local nextX = curX + stepX
+        local nextY = curY + stepY
+
+        local ok = callFindPath(nextX, nextY)
+        if not ok then
+            callFindPath(destX, destY)
+        end
+
+        if sleep then sleep(180) end
+
+        local newX, newY = getPosXY()
+        if newX == curX and newY == curY and (diffX ~= 0 or diffY ~= 0) then
+            callFindPath(destX, destY)
+            if sleep then sleep(220) end
+        end
+
+        if checkDistanceToGoal() then
+            return true
+        end
+
+        tries = tries + 1
+    end
+
+    return checkDistanceToGoal()
 end
 
-local function collectRaw(objId, posX, posY)
-    if spr then
-        spr(11, objId, posX, posY)
+-- ====================================
+-- AUTO SURG & SURG-E CORE LOGIC
+-- ====================================
+local item_ids = {
+    SPONGE = 1258,
+    SCALPEL = 1260,
+    ANESTHETIC = 1262,
+    ANTISEPTIC = 1264,
+    ANTIBIOTIC = 1266,
+    SPLINT = 1268,
+    PINS = 1270,
+    TRANSFUSION = 4308,
+    DEFIBRILLATOR = 4310,
+    LABKIT = 4312,
+    STITCHES = 4314,
+    ULTRASOUND = 4316,
+    SURG_E = 4296
+}
+
+local function useTool(itemID)
+    local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(itemID) .. "\n"
+    if sendPacket then
+        sendPacket(2, pkt)
+    elseif SendPacket then
+        SendPacket(2, pkt)
+    end
+end
+
+local function wrenchDummy(x, y)
+    if wrenchTile then
+        wrenchTile(x, y)
     elseif sendPacketRaw then
-        sendPacketRaw(false, {type = 11, value = objId, px = math.floor(posX/32), py = math.floor(posY/32), x = posX, y = posY})
-    elseif SendPacketRaw then
-        SendPacketRaw(false, {type = 11, value = objId, px = math.floor(posX/32), py = math.floor(posY/32), x = posX, y = posY})
+        local p = {
+            type = 3,
+            value = 32,
+            px = x,
+            py = y,
+            x = x * 32,
+            y = y * 32
+        }
+        sendPacketRaw(false, p)
     end
 end
 
-function Collect()
-    local px, py = getPosXY()
-    for _, obj in pairs(getObjects()) do
-        local ox = math.floor(obj.posX / 32)
-        local oy = math.floor(obj.posY / 32)
+local function scanForSurgEDummy()
+    local currentX, currentY = getPosXY()
+    local bestTile = nil
+    local bestDistance = 999999
 
-        if math.abs(ox - px) <= 5 and math.abs(oy - py) <= 5 then
-            collectRaw(obj.id, obj.posX, obj.posY)
-        end
-    end
-end
-
-local function doWrench(tx, ty)
-    if wrench then
-        pcall(function() wrench(tx, ty) end)
-        return
-    end
-    if Wrench then
-        pcall(function() Wrench(tx, ty) end)
-        return
-    end
-
-    local pkt = {
-        type = 3,
-        value = 32,
-        px = tx,
-        py = ty,
-        x = tx * 32,
-        y = ty * 32
-    }
-
-    if sendPacketRaw then
-        sendPacketRaw(false, pkt)
-    elseif SendPacketRaw then
-        SendPacketRaw(false, pkt)
-    end
-end
-
-local function getItemIdByName(name)
-    local id = findItemID and findItemID(name)
-    if not id or id == 0 or id == -1 then
-        if name:find("Stitches") then return 1270
-        elseif name:find("Scalpel") then return 1260
-        elseif name:find("Anesthetic") then return 1262
-        elseif name:find("Antiseptic") then return 1264
-        elseif name:find("Antibiotic") then return 1266
-        elseif name:find("Splint") then return 1268
-        elseif name:find("Sponge") then return 1258
-        elseif name:find("Defibrillator") then return 4312
-        elseif name:find("Clamp") then return 4314
-        elseif name:find("Ultrasound") then return 4316
-        elseif name:find("Lab") then return 4318
-        elseif name:find("Pins") then return 4308
-        elseif name:find("Transfusion") then return 4310
-        end
-    end
-    return id or 1270
-end
-
-local function findNearestSurgE()
-    local px, py = getPosXY()
-    local allTiles = getAllTiles()
-    local nearest = nil
-    local minDist = 999999
-    local now = os.clock()
-
-    for _, t in pairs(allTiles) do
-        if t.fg == 4296 then
-            local key = t.x .. "," .. t.y
-            if not failedTiles[key] or failedTiles[key] < now then
-                local dist = math.abs(t.x - px) + math.abs(t.y - py)
-                if dist < minDist then
-                    minDist = dist
-                    nearest = {x = t.x, y = t.y}
-                end
-            end
-        end
-    end
-    return nearest
-end
-
-local function handleLowSupply(itemToFind, session)
-    local targetId = getItemIdByName(itemToFind or "Surgical Stitches")
-
-    if growtopia and growtopia.notify then
-        growtopia.notify("`6[Auto Surg-E]`4 Low Supply! `oSearching dropped items...")
-    end
-
-    local foundObj = nil
-    for _, obj in pairs(getObjects()) do
-        if obj.itemid == targetId then
-            foundObj = obj
-            break
-        end
-    end
-
-    if foundObj then
-        local ox = math.floor(foundObj.posX / 32)
-        local oy = math.floor(foundObj.posY / 32)
-
-        if growtopia and growtopia.notify then
-            growtopia.notify("`2[Auto Surg-E]`o Moving to supplies at (" .. ox .. ", " .. oy .. ")")
-        end
-
-        goToDummy(ox, oy, session)
-        sleep(300)
-        Collect()
-        sleep(500)
-        Collect()
-        sleep(500)
-    else
-        if growtopia and growtopia.notify then
-            growtopia.notify("`4[Auto Surg-E]`o No dropped " .. (itemToFind or "Stitches") .. " found in world!")
-        end
-        sleep(1500)
-    end
-end
-
-local function enableFly(state)
-    if editToggle then pcall(function() editToggle("ModFly", state) end) end
-    if EditToggle then pcall(function() EditToggle("ModFly", state) end) end
-    if editValue then pcall(function() editValue("ModFly", state) end) end
-    if EditValue then pcall(function() EditValue("ModFly", state) end) end
-    if setValue then pcall(function() setValue("ModFly", state) end) end
-    if SetValue then pcall(function() SetValue("ModFly", state) end) end
-    if state then
-        pcall(function() sendPacket(2, "action|input\n|text|/fly\n") end)
-        pcall(function() sendPacket(2, "action|input\n|text|/modfly\n") end)
-    end
-end
-
--- ====================================
--- AUTO WRENCH THREAD LOOP
--- ====================================
-local function startAutoWrenchLoop()
-    wrenchSessionId = (wrenchSessionId or 0) + 1
-    local currentSession = wrenchSessionId
-    isSurgeryActive = false
-    currentOperatingDummy = nil
-    lowSupplyItem = nil
-    failedTiles = {}
-
-    enableFly(true)
-
-    local function worker()
-        while autoWrenchEnabled and is_authenticated and (wrenchSessionId == currentSession) do
-            if lowSupplyItem then
-                handleLowSupply(lowSupplyItem, currentSession)
-                lowSupplyItem = nil
-            end
-
-            if isSurgeryActive then
-                if currentOperatingDummy then
-                    hoverAt(currentOperatingDummy.x, currentOperatingDummy.y)
-                end
-                sleep(200)
-            else
-                local dummy = findNearestSurgE()
-                if not dummy then
-                    sleep(1000)
-                else
-                    goToDummy(dummy.x, dummy.y, currentSession)
-
-                    if autoWrenchEnabled and (wrenchSessionId == currentSession) then
-                        sleep(200)
-                        doWrench(dummy.x, dummy.y)
-
-                        for i = 1, 30 do
-                            hoverAt(dummy.x, dummy.y)
-                            if isSurgeryActive or lowSupplyItem or not autoWrenchEnabled or (wrenchSessionId ~= currentSession) then
-                                break
-                            end
-                            sleep(100)
+    for y = 0, 59 do
+        for x = 0, 99 do
+            local key = x .. "," .. y
+            if not failedTiles[key] then
+                local t = getTileAt(x, y)
+                if t then
+                    local fg = t.fg or (t.getFg and t.getFg()) or (t.header and t.header.fg) or 0
+                    if fg == item_ids.SURG_E then
+                        local dist = math.abs(currentX - x) + math.abs(currentY - y)
+                        if dist < bestDistance then
+                            bestDistance = dist
+                            bestTile = {x = x, y = y}
                         end
-
-                        if isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) then
-                            currentOperatingDummy = dummy
-                            local waitTimeout = 0
-                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) do
-                                hoverAt(dummy.x, dummy.y)
-                                sleep(200)
-                                waitTimeout = waitTimeout + 1
-
-                                local t = getTileAt(dummy.x, dummy.y)
-                                if t and t.fg ~= 4296 then
-                                    sleep(1000)
-                                    isSurgeryActive = false
-                                    break
-                                end
-
-                                if waitTimeout > 300 then
-                                    isSurgeryActive = false
-                                    break
-                                end
-                            end
-                            currentOperatingDummy = nil
-                        end
-                    else
-                        failedTiles[dummy.x .. "," .. dummy.y] = os.clock() + 20
-                        sleep(500)
                     end
                 end
             end
-            sleep(100)
         end
+    end
+    return bestTile
+end
+
+local function startAutoWrenchLoop()
+    if autoWrenchRunning then return end
+    autoWrenchRunning = true
+    wrenchSessionId = wrenchSessionId + 1
+    local mySession = wrenchSessionId
+
+    local function loop()
+        enableFly(true)
+        while autoWrenchEnabled and mySession == wrenchSessionId do
+            if not isSurgeryActive then
+                local dummy = scanForSurgEDummy()
+                if dummy then
+                    currentOperatingDummy = dummy
+                    local reached = goToDummy(dummy.x, dummy.y, mySession)
+                    if reached and autoWrenchEnabled and mySession == wrenchSessionId then
+                        wrenchDummy(dummy.x, dummy.y)
+                        if sleep then sleep(500) end
+                    else
+                        local key = dummy.x .. "," .. dummy.y
+                        failedTiles[key] = true
+                        if sleep then sleep(300) end
+                    end
+                else
+                    failedTiles = {}
+                    if sleep then sleep(1000) end
+                end
+            else
+                if sleep then sleep(300) end
+            end
+        end
+        enableFly(false)
+        autoWrenchRunning = false
     end
 
     if runThread then
-        runThread(worker)
-    elseif runCoroutine then
-        runCoroutine(worker)
+        runThread(loop)
+    elseif RunThread then
+        RunThread(loop)
     else
-        local co = coroutine.create(worker)
-        coroutine.resume(co)
+        loop()
     end
 end
 
 -- ====================================
--- AUTO SURG TOOLS & LOGIC
+-- MODERN PURPLE CARD UI (VEND MASTER STYLE)
 -- ====================================
-local toolIds = {
-    ["Sponge"]        = 1258,
-    ["Splint"]        = 1268,
-    ["Antibiotic"]    = 1266,
-    ["Anesthetic"]    = 1262,
-    ["Scalpel"]       = 1260,
-    ["Stitches"]      = 1270,
-    ["Lab kit"]       = 4318,
-    ["Pins"]          = 4308,
-    ["Clamp"]         = 4314,
-    ["Transfusion"]   = 4310,
-    ["Ultrasound"]    = 4316,
-    ["Defibrillator"] = 4312,
-    ["Fix it"]        = 1296,
-}
-
-local function useTool(toolName)
-    local itool = toolIds[toolName]
-    if not itool then return end
-    sendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
-    growtopia.notify("`9[`cTools`9] `c" .. toolName)
-end
-
-function onVariant(var, pkt)
-    local v1 = var.v1 or (var.get and var:get(0) and var:get(0):getString()) or var[0] or var[1]
-    if type(v1) ~= "string" then return false end
-
-    if v1 == "OnDialogRequest" then
-        local dialog = var.v2 or (var.get and var:get(1) and var:get(1):getString()) or var[1] or var[2]
-        if type(dialog) ~= "string" then return false end
-
-        -- 1. Check Low Supply Warning on Surg-E pre-popup
-        if dialog:find("Low Supply Warning:") or dialog:find("Low Supply Warning") then
-            local lowName = dialog:match("You only have [^|]*``%s*([^\r\n|]+)") or "Surgical Stitches"
-            lowName = lowName:gsub("`.", ""):match("^%s*(.-)%s*$")
-            lowSupplyItem = lowName
-            isSurgeryActive = false
-
-            sendPacket(2, "action|dialog_return\ndialog_name|surge\nbuttonClicked|cancel\n")
-            if growtopia and growtopia.notify then
-                growtopia.notify("`4[Low Supply Warning]`o " .. lowName .. "! Collecting...")
-            end
-            return true
-        end
-
-        -- 2. Check Surg-E pre-popup (Accept surgery)
-        if dialog:find("end_dialog|surge|Cancel|Okay!|") then
-            if autoWrenchEnabled or autoSurgEnabled then
-                local tilex = dialog:match("tilex|(%d+)")
-                local tiley = dialog:match("tiley|(%d+)")
-                isSurgeryActive = true
-                if tilex and tiley then
-                    currentOperatingDummy = {x = tonumber(tilex), y = tonumber(tiley)}
-                end
-                sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. (tilex or "") .. "|\ntiley|" .. (tiley or "") .. "|\n")
-                return true
-            end
-        end
-
-        -- 3. Only run tool actions if autoSurgEnabled is ON
-        if not autoSurgEnabled then return false end
-
-        if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
-            local netID = dialog:match("netID|(%d+)")
-            sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
-            return true
-        end
-
-        if (dialog:find("heart has stopped") or dialog:find("Heart stopped")) and dialog:find("tool4312") then
-            sleep(50)
-            useTool("Defibrillator")
-            return true
-        end
-
-        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") then
-            isSurgeryActive = false
-        end
-
-        local rules = {
-            { tool = "Anesthetic",    need = { "`4The patient wakes up!",              "tool1262" } },
-            { tool = "Anesthetic",    need = { "`4The patient screams and flails!",    "tool1262" } },
-            { tool = "Defibrillator", need = { "Status: `4Heart stopped!",             "tool4312" } },
-            { tool = "Anesthetic",    need = { "Status: `6Coming to",                  "tool1262" } },
-            { tool = "Transfusion",   need = { "Pulse: `4",                            "tool4310" } },
-            { tool = "Antibiotic",    need = { "Temp: `4",                             "tool1266" } },
-            { tool = "Lab kit",       need = { "Temp: `4",                             "tool4318" } },
-            { tool = "Antibiotic",    need = { "Temp: `6",                             "tool1266" } },
-            { tool = "Lab kit",       need = { "Temp: `6",                             "tool4318" } },
-            { tool = "Antibiotic",    need = { "Temp: `3",                             "tool1266" } },
-            { tool = "Lab kit",       need = { "Temp: `3",                             "tool4318" } },
-            { tool = "Clamp",         need = { "Patient is losing blood `4very quickly!", "tool4314" } },
-            { tool = "Stitches",      need = { "Patient is losing blood `4very quickly!", "tool1270" } },
-            { tool = "Clamp",         need = { "Patient is `6losing blood!",           "tool4314" } },
-            { tool = "Stitches",      need = { "Patient is `6losing blood!",           "tool1270" } },
-            { tool = "Fix it",        need = { "tool1296" } },
-            { tool = "Fix it",        need = { "Incisions: `20",                       "tool1296" } },
-            { tool = "Fix it",        need = { "Incisions: `30",                       "tool1296" } },
-            { tool = "Ultrasound",    need = { "The patient has not been diagnosed.",  "tool4316" } },
-            { tool = "Anesthetic",    need = { "Status: `4Awake",                      "tool1262" } },
-            { tool = "Splint",        need = { "Bones: `6", " broken``",               "tool1268" } },
-            { tool = "Splint",        need = { "Bones: `4", " broken``",               "tool1268" } },
-            { tool = "Stitches",      need = { "Patient broke his arm.",               "tool1270" } },
-            { tool = "Anesthetic",    need = { "Status: `3Awake",                      "tool1262" } },
-            { tool = "Transfusion",   need = { "Pulse: `6",                            "tool4310" } },
-            { tool = "Defibrillator", need = { "The patient's heart has stopped!",    "tool4312" } },
-            { tool = "Sponge",        need = { "`4You can't see what you are doing!",  "tool1258" } },
-            { tool = "Pins",          need = { "Bones: `6", ", `6", " shattered",     "tool4308" } },
-            { tool = "Scalpel",       need = { "Bones: `6", ", `6", " shattered",     "tool1260" } },
-            { tool = "Pins",          need = { "Bones: `4", ", `6", " shattered",     "tool4308" } },
-            { tool = "Scalpel",       need = { "Bones: `4", ", `6", " shattered",     "tool1260" } },
-            { tool = "Pins",          need = { "Bones: `6", ", `4", " shattered",     "tool4308" } },
-            { tool = "Scalpel",       need = { "Bones: `6", ", `4", " shattered",     "tool1260" } },
-            { tool = "Pins",          need = { "Bones: `4", ", `4", " shattered",     "tool4308" } },
-            { tool = "Scalpel",       need = { "Bones: `4", ", `4", " shattered",     "tool1260" } },
-            { tool = "Pins",          need = { "Bones: `6", " shattered",             "tool4308" } },
-            { tool = "Scalpel",       need = { "Bones: `6", " shattered",             "tool1260" } },
-            { tool = "Pins",          need = { "Bones: `4", " shattered",             "tool4308" } },
-            { tool = "Scalpel",       need = { "Bones: `4", " shattered",             "tool1260" } },
-            { tool = "Stitches",      need = { "Incisions: `6",                        "tool1270" } },
-            { tool = "Stitches",      need = { "Patient broke his leg.",               "tool1270" } },
-            { tool = "Clamp",         need = { "Patient is losing blood `3slowly.",   "tool4314" } },
-            { tool = "Scalpel",       need = { "tool1260" } },
-        }
-
-        for _, rule in ipairs(rules) do
-            local ok = true
-            for _, pattern in ipairs(rule.need) do
-                if not dialog:find(pattern, 1, true) then
-                    ok = false
-                    break
-                end
-            end
-            if ok then
-                useTool(rule.tool)
-                return true
-            end
-        end
-    end
-
-    return false
-end
-
--- Register hooks
-if addHook then
-    pcall(function() addHook(onVariant, "onVariant") end)
-    pcall(function() addHook(HookOutgoing, "onSendPacket") end)
-end
-
--- ====================================
--- IMGUI INTERFACE (PREMIUM & FREE)
--- MODERN PURPLE CARD INTERFACE (VEND STYLE)
--- ====================================
-local function applyVendStyle()
-    local pushedColors = 0
-    local pushedVars = 0
-
-    local function pushCol(idx, r, g, b, a)
-        if ImGui and ImGui.PushStyleColor then
-            local vec = ImVec4 and ImVec4(r, g, b, a) or {r, g, b, a}
-            if pcall(function() ImGui.PushStyleColor(idx, vec) end) then
-                pushedColors = pushedColors + 1
-            end
-        end
-    end
-
-    local function pushVar(idx, val1, val2)
-        if ImGui and ImGui.PushStyleVar then
-            local ok = false
-            if val2 and ImVec2 then
-                ok = pcall(function() ImGui.PushStyleVar(idx, ImVec2(val1, val2)) end)
-            else
-                ok = pcall(function() ImGui.PushStyleVar(idx, val1) end)
-            end
-            if ok then pushedVars = pushedVars + 1 end
-        end
-    end
-
-    -- Window Styling (Dark slate navy + vibrant purple accents)
-    pushCol(2, 0.09, 0.10, 0.14, 0.96)  -- ImGuiCol_WindowBg
-    pushCol(5, 0.28, 0.24, 0.45, 0.50)  -- ImGuiCol_Border
-    pushCol(7, 0.13, 0.14, 0.20, 1.00)  -- ImGuiCol_FrameBg
-    pushCol(8, 0.17, 0.18, 0.26, 1.00)  -- ImGuiCol_FrameBgHovered
-    pushCol(9, 0.22, 0.23, 0.33, 1.00)  -- ImGuiCol_FrameBgActive
-    pushCol(21, 0.48, 0.36, 0.98, 1.00) -- ImGuiCol_Button (#7B5CFA Purple)
-    pushCol(22, 0.56, 0.44, 1.00, 1.00) -- ImGuiCol_ButtonHovered
-    pushCol(23, 0.40, 0.28, 0.88, 1.00) -- ImGuiCol_ButtonActive
-    pushCol(18, 0.48, 0.36, 0.98, 1.00) -- ImGuiCol_CheckMark
-    pushCol(27, 0.20, 0.22, 0.32, 0.50) -- ImGuiCol_Separator
-
-    pushVar(1, 14.0)                     -- ImGuiStyleVar_WindowRounding
-    pushVar(11, 8.0)                     -- ImGuiStyleVar_FrameRounding (Pill buttons)
-    pushVar(2, 1.0)                      -- ImGuiStyleVar_WindowBorderSize
-    pushVar(3, 14.0, 14.0)               -- ImGuiStyleVar_WindowPadding
-    pushVar(13, 8.0, 8.0)                -- ImGuiStyleVar_ItemSpacing
-
-    return pushedColors, pushedVars
-end
-
-local function popVendStyle(colors, vars)
-    if ImGui and ImGui.PopStyleColor and colors > 0 then
-        pcall(function() ImGui.PopStyleColor(colors) end)
-    end
-    if ImGui and ImGui.PopStyleVar and vars > 0 then
-        pcall(function() ImGui.PopStyleVar(vars) end)
-    end
-end
-
-local function pillButton(label, active, height)
-    local pushed = 0
-    local h = height or 32
-    if active ~= nil then
-        if active then
-            if ImGui and ImGui.PushStyleColor then
-                pcall(function() ImGui.PushStyleColor(21, ImVec4(0.48, 0.36, 0.98, 1.0)) end)
-                pcall(function() ImGui.PushStyleColor(22, ImVec4(0.56, 0.44, 1.00, 1.0)) end)
-                pcall(function() ImGui.PushStyleColor(23, ImVec4(0.40, 0.28, 0.88, 1.0)) end)
-                pushed = 3
-            end
-        else
-            if ImGui and ImGui.PushStyleColor then
-                pcall(function() ImGui.PushStyleColor(21, ImVec4(0.16, 0.17, 0.24, 1.0)) end)
-                pcall(function() ImGui.PushStyleColor(22, ImVec4(0.22, 0.24, 0.32, 1.0)) end)
-                pcall(function() ImGui.PushStyleColor(23, ImVec4(0.12, 0.13, 0.18, 1.0)) end)
-                pushed = 3
-            end
-        end
-    end
-
-    local clicked = false
-    local sizeVec = ImVec2 and ImVec2(-1, h) or nil
-    if sizeVec then
-        clicked = ImGui.Button(label, sizeVec)
-    else
-        clicked = ImGui.Button(label)
-    end
-
-    if pushed > 0 and ImGui.PopStyleColor then
-        pcall(function() ImGui.PopStyleColor(pushed) end)
-    end
-    return clicked
-end
-
-local function safeColoredText(colorVec, text)
-    local ok = false
-    if ImGui and ImGui.TextColored then
-        if ImVec4 then
-            ok = pcall(function() ImGui.TextColored(ImVec4(colorVec[1], colorVec[2], colorVec[3], colorVec[4]), text) end)
-        end
-        if not ok then
-            ok = pcall(function() ImGui.TextColored(colorVec, text) end)
-        end
-    end
-    if not ok and ImGui and ImGui.Text then
-        ImGui.Text(text)
-    end
-end
+local keyInputBuffer = "vip"
 
 local function zamaImGuiLoop()
-    local winTitle = "AutoSurg // ZAMA STORE"
-    if user_tier == "PREMIUM" then
-        winTitle = "AutoSurg [PREMIUM VIP] - ZamaStore"
-    elseif user_tier == "FREE" then
-        winTitle = "AutoSurg [FREE TIER] - ZamaStore"
-    local winTitle = "Auto Surg##zama_autosurg"
-
-    local cCount, vCount = applyVendStyle()
-
-    if ImGui.SetNextWindowSize and ImVec2 then
-        pcall(function() ImGui.SetNextWindowSize(ImVec2(300, 0), 4) end)
+    -- Safe Style Application
+    local stylePushed = 0
+    if ImGui and ImGui.PushStyleColor and ImVec4 then
+        pcall(function()
+            ImGui.PushStyleColor(2, ImVec4(0.09, 0.10, 0.14, 0.96))  -- WindowBg (Dark slate navy)
+            ImGui.PushStyleColor(5, ImVec4(0.28, 0.24, 0.45, 0.50))  -- Border
+            ImGui.PushStyleColor(7, ImVec4(0.13, 0.14, 0.20, 1.00))  -- FrameBg
+            ImGui.PushStyleColor(21, ImVec4(0.48, 0.36, 0.98, 1.00)) -- Button (#7B5CFA Purple)
+            ImGui.PushStyleColor(22, ImVec4(0.56, 0.44, 1.00, 1.00)) -- ButtonHovered
+            ImGui.PushStyleColor(23, ImVec4(0.40, 0.28, 0.88, 1.00)) -- ButtonActive
+            stylePushed = 6
+        end)
     end
 
-    if ImGui.Begin(winTitle) then
-        if not is_authenticated then
-            safeColoredText({1, 0.3, 0.3, 1}, "[!] STATUS: NOT ACTIVATED")
-            ImGui.Text("Please enter your key in the Growtopia dialog!")
-            safeColoredText({1.0, 0.4, 0.4, 1.0}, "Status: NOT ACTIVATED")
-            safeColoredText({0.60, 0.62, 0.72, 1.0}, "Please enter key in Growtopia dialog!")
-            if pillButton("Open Community Discord##comm_btn", true, 32) then
-                growtopia.notify("`oDiscord: `bdiscord.gg/ekuVdjF4F9")
-            end
+    if ImGui.SetNextWindowSize and ImVec2 then
+        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 480), 4) end)
+    end
+
+    local winOpen = ImGui.Begin("Auto Surg##vend_autosurg")
+    if winOpen then
+        -- 1. HEADER SECTION (Card with badge + Title)
+        if ImGui.TextColored and ImVec4 then
+            pcall(function() ImGui.TextColored(ImVec4(0.65, 0.55, 1.0, 1.0), "[*] Auto Surg") end)
+            pcall(function() ImGui.TextColored(ImVec4(0.60, 0.62, 0.72, 1.0), "Zama Store // Surgery Assistant") end)
         else
-            -- 1. HEADER SECTION
-            safeColoredText({0.65, 0.55, 1.0, 1.0}, "[*] Auto Surg")
-            safeColoredText({0.60, 0.62, 0.72, 1.0}, "Zama Store // Surgery Assistant")
-
-            if ImGui.Separator then ImGui.Separator() end
-            ImGui.Text("Community: discord.gg/ekuVdjF4F9")
-        else
-            -- Header Banner
-
-            -- 2. TIER / VERIFIED STATUS
-            if user_tier == "PREMIUM" then
-                safeColoredText({1, 0.84, 0, 1}, "[*] USER: PREMIUM VIP")
-                ImGui.SameLine()
-                safeColoredText({0.3, 1, 0.3, 1}, "[LIFETIME ACCESS]")
-                safeColoredText({0.3, 1.0, 0.4, 1.0}, "Status: [x] Verified (VIP Lifetime)")
-            else
-                safeColoredText({0.3, 0.85, 1, 1}, "[i] USER: FREE TRIAL")
-                ImGui.SameLine()
-                safeColoredText({1, 0.7, 0.2, 1}, "[1 SESSION]")
-                safeColoredText({0.3, 0.85, 1.0, 1.0}, "Status: [x] Verified (Free Session)")
-                if pillButton("Get Key (Free) / Community##get_key_btn", true, 30) then
-                    growtopia.notify("`oDiscord: `bdiscord.gg/ekuVdjF4F9")
-                end
-            end
-
-            if ImGui.Separator then ImGui.Separator() end
-
-            -- SECTION 1: SURGERY TOOLS
-            safeColoredText({0.35, 0.85, 1, 1}, "=== SURGERY ASSISTANT ===")
-            ImGui.Text("Auto Surg (Tools)")
-            ImGui.SameLine()
-            if autoSurgEnabled then
-                if ImGui.Button("[ ON ]##surg_btn") then
-                    autoSurgEnabled = false
-                    growtopia.notify("`4AutoSurg Disabled")
-                end
-            else
-                if ImGui.Button("[ OFF ]##surg_btn") then
-                    autoSurgEnabled = true
-                    growtopia.notify("`2AutoSurg Enabled")
-                end
-            -- 3. MAIN CONTROLS (FULL WIDTH PILL BUTTONS)
-            local surgLabel = autoSurgEnabled and "Auto Surg (Tools): ENABLED" or "Auto Surg (Tools): DISABLED"
-            if pillButton(surgLabel .. "##surg_pill", autoSurgEnabled, 34) then
-                autoSurgEnabled = not autoSurgEnabled
-                growtopia.notify(autoSurgEnabled and "`2AutoSurg Enabled" or "`4AutoSurg Disabled")
-            end
-
-            -- SECTION 2: SURG-E AUTOMATION
-            if ImGui.Separator then ImGui.Separator() end
-            safeColoredText({1, 0.8, 0.3, 1}, "=== SURG-E AUTOMATION ===")
-            ImGui.Text("Auto Wrench Surg-e")
-            ImGui.SameLine()
-            if autoWrenchEnabled then
-                if ImGui.Button("[ ON ]##wrench_btn") then
-                    autoWrenchEnabled = false
-            local wrenchLabel = autoWrenchEnabled and "Auto Wrench Surg-E: ENABLED" or "Auto Wrench Surg-E: DISABLED"
-            if pillButton(wrenchLabel .. "##wrench_pill", autoWrenchEnabled, 34) then
-                autoWrenchEnabled = not autoWrenchEnabled
-                if autoWrenchEnabled then
-                    growtopia.notify("`2Auto Wrench Enabled")
-                    startAutoWrenchLoop()
-                else
-                    isSurgeryActive = false
-                    currentOperatingDummy = nil
-                    lowSupplyItem = nil
-                    wrenchSessionId = (wrenchSessionId or 0) + 1
-                    enableFly(false)
-                    growtopia.notify("`4Auto Wrench Disabled")
-                end
-            else
-                if ImGui.Button("[ OFF ]##wrench_btn") then
-                    autoWrenchEnabled = true
-                    growtopia.notify("`2Auto Wrench Enabled")
-                    startAutoWrenchLoop()
-                end
-            end
-
-            -- SECTION 3: LIVE STATUS
-            if ImGui.Separator then ImGui.Separator() end
-            ImGui.Text("Activity Status:")
-
-            -- 4. MODE SECTION
-            safeColoredText({1.0, 0.50, 0.50, 1.0}, "Mode: Surg-E Auto Farm")
-
-            pillButton("Step Pathfind: 4-5 Tiles (Active)##mode1", true, 30)
-            pillButton("Supplies Auto-Collector (Active)##mode2", true, 30)
-
-            if ImGui.Separator then ImGui.Separator() end
-
-            -- 5. LIVE ACTIVITY & STATS
-            safeColoredText({0.60, 0.62, 0.72, 1.0}, "Supplies:")
-            ImGui.SameLine()
-            if lowSupplyItem then
-                safeColoredText({1.0, 0.3, 0.3, 1.0}, "Low: " .. lowSupplyItem)
-            else
-                safeColoredText({0.3, 1.0, 0.4, 1.0}, "Normal")
-            end
-
-            safeColoredText({0.60, 0.62, 0.72, 1.0}, "Activity:")
-            ImGui.SameLine()
-            if isSurgeryActive then
-                safeColoredText({0.2, 1, 0.2, 1}, "OPERATING SURGERY...")
-                safeColoredText({0.2, 1.0, 0.3, 1.0}, "OPERATING...")
-            elseif autoWrenchEnabled then
-                safeColoredText({1, 1, 0.3, 1}, "SEARCHING SURG-E...")
-                safeColoredText({1.0, 0.9, 0.2, 1.0}, "SEARCHING...")
-            else
-                safeColoredText({0.6, 0.6, 0.6, 1}, "STANDBY (IDLE)")
-                safeColoredText({0.6, 0.6, 0.6, 1.0}, "STANDBY (IDLE)")
-            end
-
-            if pillButton("Refresh Stats##refresh_btn", true, 30) then
-                growtopia.notify("`2[AutoSurg]`o Stats Refreshed!")
-            end
-
-            -- FOOTER
-            if ImGui.Separator then ImGui.Separator() end
-            if user_tier == "FREE" then
-                safeColoredText({1, 0.75, 0.2, 1}, "[*] Want keyless access? Upgrade to VIP!")
-            else
-                safeColoredText({0.4, 1, 0.4, 1}, "[*] Thank you for supporting VIP!")
-            end
-            safeColoredText({0.5, 0.7, 1, 1}, "Discord: discord.gg/ekuVdjF4F9")
-            safeColoredText({0.50, 0.55, 0.70, 1.0}, "discord.gg/ekuVdjF4F9")
+            ImGui.Text("[*] Auto Surg")
+            ImGui.Text("Zama Store // Surgery Assistant")
         end
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 2. GET KEY BUTTON (Purple Pill)
+        local btnW = (ImGui.GetContentRegionAvailWidth and ImGui.GetContentRegionAvailWidth()) or 0
+        local btnSize = ImVec2 and ImVec2(btnW, 32) or nil
+        
+        local getPressed = false
+        if btnSize then
+            getPressed = ImGui.Button("Get Key (Free)##get_key", btnSize)
+        else
+            getPressed = ImGui.Button("Get Key (Free)##get_key")
+        end
+        if getPressed then
+            notifyUser("`oDiscord: `bdiscord.gg/ekuVdjF4F9 `o(Use /freekey)")
+        end
+
+        -- 3. KEY INPUT & VERIFY (Matching screenshot)
+        ImGui.Text("Key")
+        if ImGui.InputText then
+            local changed, newKey = pcall(function()
+                return ImGui.InputText("##key_input", keyInputBuffer, 64)
+            end)
+            if changed and type(newKey) == "string" then
+                keyInputBuffer = newKey
+            end
+        end
+
+        local verifyPressed = false
+        if btnSize then
+            verifyPressed = ImGui.Button("Verify Key##verify_btn", btnSize)
+        else
+            verifyPressed = ImGui.Button("Verify Key##verify_btn")
+        end
+        if verifyPressed then
+            if keyInputBuffer == "vip" or keyInputBuffer == "premium" then
+                user_tier = "PREMIUM"
+                is_authenticated = true
+                keyStatusText = "Status: `2Verified (VIP Lifetime)``"
+                notifyUser("`2[AutoSurg] Verified as VIP Lifetime!")
+            elseif keyInputBuffer == "1234" then
+                user_tier = "FREE"
+                is_authenticated = true
+                keyStatusText = "Status: `2Verified (Free Session)``"
+                notifyUser("`2[AutoSurg] Verified as Free Session!")
+            else
+                keyStatusText = "Status: `4Invalid Key! (Try 'vip' or '1234')``"
+                notifyUser("`4[AutoSurg] Invalid key! Use 'vip' or '1234'.")
+            end
+        end
+
+        -- 4. STATUS LINE
+        if ImGui.TextColored and ImVec4 then
+            if is_authenticated then
+                pcall(function() ImGui.TextColored(ImVec4(0.3, 1.0, 0.4, 1.0), keyStatusText) end)
+            else
+                pcall(function() ImGui.TextColored(ImVec4(1.0, 0.3, 0.3, 1.0), keyStatusText) end)
+            end
+        else
+            ImGui.Text(keyStatusText)
+        end
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 5. ENABLE / MASTER TOGGLE (Matching screenshot)
+        local masterActive = autoSurgEnabled or autoWrenchEnabled
+        local masterLabel = masterActive and "Enable: [ ON ]##master" or "Enable: [ OFF ]##master"
+        local masterPressed = false
+        if btnSize then
+            masterPressed = ImGui.Button(masterLabel, btnSize)
+        else
+            masterPressed = ImGui.Button(masterLabel)
+        end
+        if masterPressed then
+            local newState = not masterActive
+            autoSurgEnabled = newState
+            autoWrenchEnabled = newState
+            if newState then
+                notifyUser("`2[AutoSurg] All Features Enabled!")
+                startAutoWrenchLoop()
+            else
+                notifyUser("`4[AutoSurg] All Features Disabled!")
+                isSurgeryActive = false
+                currentOperatingDummy = nil
+                enableFly(false)
+            end
+        end
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 6. MODE SECTION & ACTION PILL BUTTONS (Matching screenshot)
+        if ImGui.TextColored and ImVec4 then
+            pcall(function() ImGui.TextColored(ImVec4(1.0, 0.45, 0.45, 1.0), "Mode: Surg-E Auto Farm") end)
+        else
+            ImGui.Text("Mode: Surg-E Auto Farm")
+        end
+
+        -- Set Add Stock / Auto Surg Pill
+        local surgPillLabel = autoSurgEnabled and "Set Auto Surg (Tools) [ON]##surg" or "Set Auto Surg (Tools) [OFF]##surg"
+        local sPressed = false
+        if btnSize then
+            sPressed = ImGui.Button(surgPillLabel, btnSize)
+        else
+            sPressed = ImGui.Button(surgPillLabel)
+        end
+        if sPressed then
+            autoSurgEnabled = not autoSurgEnabled
+            notifyUser(autoSurgEnabled and "`2Auto Surg Tools Enabled" or "`4Auto Surg Tools Disabled")
+        end
+
+        -- Set Empty Stock / Smooth Move Pill
+        local stepPressed = false
+        if btnSize then
+            stepPressed = ImGui.Button("4-5 Tiles Smooth Move (Active)##step", btnSize)
+        else
+            stepPressed = ImGui.Button("4-5 Tiles Smooth Move (Active)##step")
+        end
+        if stepPressed then
+            notifyUser("`2[AutoSurg] Smooth Pathfinding is Active!")
+        end
+
+        -- Set Lock Withdraw / Auto Wrench Pill
+        local wrenchPillLabel = autoWrenchEnabled and "Set Auto Wrench Surg-E [ON]##wr" or "Set Auto Wrench Surg-E [OFF]##wr"
+        local wPressed = false
+        if btnSize then
+            wPressed = ImGui.Button(wrenchPillLabel, btnSize)
+        else
+            wPressed = ImGui.Button(wrenchPillLabel)
+        end
+        if wPressed then
+            autoWrenchEnabled = not autoWrenchEnabled
+            if autoWrenchEnabled then
+                notifyUser("`2Auto Wrench Enabled")
+                startAutoWrenchLoop()
+            else
+                notifyUser("`4Auto Wrench Disabled")
+                isSurgeryActive = false
+                currentOperatingDummy = nil
+                enableFly(false)
+            end
+        end
+
+        if ImGui.Separator then ImGui.Separator() end
+
+        -- 7. STATS & LIVE INFO (Matching screenshot "WLs: 46", "Refresh Stats")
+        if ImGui.TextColored and ImVec4 then
+            pcall(function() ImGui.TextColored(ImVec4(0.85, 0.75, 0.4, 1.0), "WLs / Supplies: Normal") end)
+            local actText = isSurgeryActive and "Activity: OPERATING..." or (autoWrenchEnabled and "Activity: SEARCHING..." or "Activity: STANDBY")
+            pcall(function() ImGui.TextColored(ImVec4(0.4, 0.85, 1.0, 1.0), actText) end)
+        else
+            ImGui.Text("WLs / Supplies: Normal")
+            ImGui.Text("Activity: STANDBY")
+        end
+
+        local refPressed = false
+        if btnSize then
+            refPressed = ImGui.Button("Refresh Stats##ref", btnSize)
+        else
+            refPressed = ImGui.Button("Refresh Stats##ref")
+        end
+        if refPressed then
+            notifyUser("`2[AutoSurg] Stats Refreshed!")
+        end
+
         ImGui.End()
     end
 
-    popVendStyle(cCount, vCount)
+    -- Safe Pop
+    if stylePushed > 0 and ImGui.PopStyleColor then
+        for i = 1, stylePushed do
+            pcall(function() ImGui.PopStyleColor() end)
+        end
+    end
 end
 
-if addHook then
-    pcall(function() addHook(zamaImGuiLoop, "onDrawImGui") end)
+-- ====================================
+-- REGISTER HOOKS TO ALL POSSIBLE VARIANTS
+-- ====================================
+local function safeRegisterHook(func, hookName)
+    if addHook then pcall(function() addHook(func, hookName) end) end
+    if AddHookCallback then pcall(function() AddHookCallback(func, hookName) end) end
+    if AddHook then pcall(function() AddHook(hookName, "ZamaHook", func) end) end
 end
+
+safeRegisterHook(zamaImGuiLoop, "onDrawImGui")
+safeRegisterHook(zamaImGuiLoop, "OnDrawImGui")
+safeRegisterHook(zamaImGuiLoop, "on_draw_imgui")
 
 if applyHook then pcall(applyHook) end
-
-
