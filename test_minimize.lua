@@ -291,7 +291,7 @@ local function startAutoWrenchLoop()
 end
 
 -- ====================================
--- ORIGINAL CLEAN IMGUI WITH MINIMIZE
+-- FLOATING ICON & FULL MENU TOGGLE
 -- ====================================
 local function safeColoredText(colorVec, text)
     local ok = false
@@ -308,69 +308,68 @@ local function safeColoredText(colorVec, text)
     end
 end
 
-local isMinimized = false
-local windowOpen = true
+local isMenuOpen = true
 
 local function zamaImGuiLoop()
-    if not windowOpen then return end
-
-    local currentTier = _G.USER_TIER or user_tier or "PREMIUM"
-    local winTitle = "AutoSurg // ZAMA STORE##main_win"
-    if currentTier == "PREMIUM" then
-        winTitle = "AutoSurg [PREMIUM VIP] - ZamaStore##main_win"
-    elseif currentTier == "FREE" then
-        winTitle = "AutoSurg [FREE TIER] - ZamaStore##main_win"
-    end
-
-    -- 1. IF MINIMIZED: SHOW COMPACT FLOATING BAR
-    if isMinimized then
+    -- ============================================================
+    -- 1. FLOATING ICON BUTTON (When Menu is Closed)
+    -- ============================================================
+    if not isMenuOpen then
+        local iconFlags = 1 + 2 + 64 -- NoTitleBar (1) + NoResize (2) + AlwaysAutoResize (64)
         if ImGui.SetNextWindowSize and ImVec2 then
-            pcall(function() ImGui.SetNextWindowSize(ImVec2(180, 42), 4) end)
+            pcall(function() ImGui.SetNextWindowSize(ImVec2(75, 45), 4) end)
         end
-        local visible = ImGui.Begin("AutoSurg (Mini)##mini_win", true)
+
+        local visible = ImGui.Begin("##surg_floating_icon", true, iconFlags)
         if visible then
-            local actStatus = isSurgeryActive and "[Surg]" or (autoWrenchEnabled and "[Find]" or "[Idle]")
-            local label = "[+] Expand " .. actStatus .. "##exp_btn"
-            if ImGui.Button and ImGui.Button(label) then
-                isMinimized = false
+            local iconLabel = isSurgeryActive and "[*] Surg" or (autoWrenchEnabled and "[~] Surg" or "[+] Surg")
+            if ImGui.Button(iconLabel .. "##open_surg_menu") then
+                isMenuOpen = true
             end
         end
         ImGui.End()
         return
     end
 
-    -- 2. NORMAL WINDOW: FULL CONTROLS WITH MINIMIZE BUTTON
+    -- ============================================================
+    -- 2. FULL AUTOSURG MENU (When Menu is Open)
+    -- ============================================================
     if ImGui.SetNextWindowSize and ImVec2 then
         pcall(function() ImGui.SetNextWindowSize(ImVec2(310, 360), 4) end)
     end
 
-    local visible, p_open = ImGui.Begin(winTitle, windowOpen)
-    if p_open == false then
-        windowOpen = false
+    local currentTier = _G.USER_TIER or user_tier or "PREMIUM"
+    local winTitle = "AutoSurg // ZAMA STORE##main_win"
+    if currentTier == "PREMIUM" then
+        winTitle = "AutoSurg [PREMIUM VIP]##main_win"
+    elseif currentTier == "FREE" then
+        winTitle = "AutoSurg [FREE TIER]##main_win"
     end
 
-    -- Also check native ImGui collapse state (e.g. double-click title bar)
-    if ImGui.IsWindowCollapsed and ImGui.IsWindowCollapsed() then
+    -- Passing 'true' enables the [X] close button on the window title bar
+    local visible, open_state = ImGui.Begin(winTitle, true)
+
+    -- If user clicks [X] on title bar, switch back to floating icon
+    if open_state == false then
+        isMenuOpen = false
         ImGui.End()
         return
     end
 
     if visible then
-        -- Header Banner + Minimize Button
+        -- Header line
         if currentTier == "PREMIUM" then
             safeColoredText({1, 0.84, 0, 1}, "[*] USER: PREMIUM VIP")
         else
             safeColoredText({0.3, 0.85, 1, 1}, "[i] USER: FREE TRIAL")
         end
-        
+
+        -- Header [X] button for mobile touch friendly closing
         ImGui.SameLine()
-        if ImGui.Button("[-] Minimize##min_btn") then
-            isMinimized = true
-            pcall(function()
-                if ImGui.SetWindowCollapsed then
-                    ImGui.SetWindowCollapsed(true, 0)
-                end
-            end)
+        if ImGui.Button("[X] Hide##close_to_icon_btn") then
+            isMenuOpen = false
+            ImGui.End()
+            return
         end
 
         if ImGui.Separator then ImGui.Separator() end
@@ -439,6 +438,8 @@ local function zamaImGuiLoop()
         end
         safeColoredText({0.5, 0.7, 1, 1}, "Discord: discord.gg/ekuVdjF4F9")
 
+        ImGui.End()
+    else
         ImGui.End()
     end
 end
