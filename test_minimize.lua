@@ -1,68 +1,52 @@
 -- ==========================================
--- TestAuthAndSurg.lua (Growlauncher Test File)
--- Modern Purple Card UI (Vend Master Style - Fixed)
+-- AutoSurg + Auto Wrench Surg-E by zama10
+-- Module Integration for Growlauncher
+-- Discord: discord.gg/ekuVdjF4F9
 -- ==========================================
-local is_authenticated = true
-local user_tier = "PREMIUM"
+
+-- Cleanup old hooks on rerun
+pcall(function()
+    if removeHook then
+        removeHook("onvariant")
+        removeHook("onvalue")
+        removeHook("onVariant")
+        removeHook("OnVariant")
+        removeHook("onValue")
+        removeHook("OnValue")
+    end
+end)
+
 local autoSurgEnabled = false
 local autoWrenchEnabled = false
 local isSurgeryActive = false
 local lowSupplyItem = nil
 local currentOperatingDummy = nil
 local failedTiles = {}
-local autoWrenchRunning = false
 local wrenchSessionId = 0
-local keyInputBuffer = "vip"
-local keyStatusText = "Status: [ Verified - VIP Lifetime ]"
+local autoWrenchRunning = false
 local isInitialized = false
 
--- Cleanup old hooks & module for fresh rerun
-pcall(function()
-    if removeHook then
-        removeHook("onDrawImGui")
-        removeHook("OnDrawImGui")
-        removeHook("on_draw_imgui")
-        removeHook("onVariant")
-        removeHook("OnVariant")
-        removeHook("on_variant")
-        removeHook("onValue")
-        removeHook("OnValue")
-        removeHook("on_value")
-    end
-    if removeCategory then pcall(function() removeCategory("AutoSurg") end) end
-    if removeModule then pcall(function() removeModule("AutoSurg") end) end
-    if addIntoModule then pcall(function() addIntoModule("{}", "AutoSurg") end) end
-end)
-
--- Safe Notification Helper (Chat, Console, Overlay, & Toast)
+-- ====================================
+-- NOTIFICATION HELPER
+-- ====================================
 local function notifyUser(text)
-    -- In-game console / chat message (appears in game chat log)
+    -- In-game console chat message (top-left chat)
     if logToConsole then pcall(function() logToConsole(text) end) end
     if LogToConsole then pcall(function() LogToConsole(text) end) end
-    if log then pcall(function() log(text) end) end
     if growtopia and growtopia.sendChat then
         pcall(function() growtopia.sendChat(text, true) end)
     end
 
-    -- OnTextOverlay (floating text on screen)
-    -- OnTextOverlay (floating text on screen - single clean render)
+    -- OnTextOverlay (floating text in center of screen)
     if sendVariant then
         pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
-        pcall(function() sendVariant({ [0] = "OnTextOverlay", [1] = text }) end)
     end
 
-    -- Growlauncher native notification
+    -- Native Launcher notification
     if sendNotification then
         pcall(function() sendNotification(text) end)
     end
-    if growtopia and growtopia.notify then
-        pcall(function() growtopia.notify(text) end)
-    end
-
-    if print then print(text) end
 end
-
-notifyUser("AutoSurg by zama")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -93,6 +77,45 @@ local function getTileAt(x, y)
     return nil
 end
 
+local function getAllTiles()
+    if getTiles then return getTiles()
+    elseif GetTiles then return GetTiles()
+    elseif getTileMap then
+        local tm = getTileMap()
+        if tm and tm.tiles then return tm.tiles end
+    end
+    return {}
+end
+
+local function getObjects()
+    if getObjectList then return getObjectList()
+    elseif GetObjectList then return GetObjectList()
+    end
+    return {}
+end
+
+local function hoverAt(tx, ty)
+    local px = tx * 32
+    local py = ty * 32
+
+    if sendVariant then
+        pcall(function() sendVariant({ v1 = "OnSetPos", v2 = { px, py } }) end)
+    end
+
+    local pkt = {
+        type = 0,
+        x = px,
+        y = py,
+        px = tx,
+        py = ty,
+        xspeed = 0,
+        yspeed = 0
+    }
+    if sendPacketRaw then sendPacketRaw(false, pkt)
+    elseif SendPacketRaw then SendPacketRaw(false, pkt)
+    end
+end
+
 local function enableFly(state)
     if editToggle then pcall(function() editToggle("ModFly", state) end) end
     if EditToggle then pcall(function() EditToggle("ModFly", state) end) end
@@ -100,8 +123,10 @@ local function enableFly(state)
     if EditValue then pcall(function() EditValue("ModFly", state) end) end
     if setValue then pcall(function() setValue("ModFly", state) end) end
     if SetValue then pcall(function() SetValue("ModFly", state) end) end
-    pcall(function() if editToggle then editToggle("Fly", state) end end)
-    pcall(function() if editValue then editValue("Fly", state) end end)
+    if editToggle then pcall(function() editToggle("cheat_modfly", state) end) end
+    if editValue then pcall(function() editValue("cheat_modfly", state) end) end
+    if editToggle then pcall(function() editToggle("Fly", state) end) end
+    if editValue then pcall(function() editValue("Fly", state) end) end
     if state then
         pcall(function()
             if sendPacket then
@@ -112,105 +137,111 @@ local function enableFly(state)
     end
 end
 
-local function isTileReachable(tileX, tileY)
-    local t = getTileAt(tileX, tileY)
-    if not t then return true end
-    local fg = t.fg or (t.getFg and t.getFg()) or (t.header and t.header.fg) or 0
-    if fg ~= 0 then return false end
-    return true
+local function goToDummy(targetX, targetY, session)
+    local maxTotalSteps = 60
+    local totalSteps = 0
+
+    while autoWrenchEnabled and (not session or wrenchSessionId == session) and totalSteps < maxTotalSteps do
+        totalSteps = totalSteps + 1
+        local px, py = getPosXY()
+        local dx = targetX - px
+        local dy = targetY - py
+
+        if dx == 0 and dy == 0 then
+            break
+        end
+
+        local stepX = px
+        local stepY = py
+
+        -- Step 4-5 tiles towards target
+        if math.abs(dx) <= 4 then
+            stepX = targetX
+        elseif dx > 0 then
+            stepX = px + 4
+        else
+            stepX = px - 4
+        end
+
+        if math.abs(dy) <= 4 then
+            stepY = targetY
+        elseif dy > 0 then
+            stepY = py + 4
+        else
+            stepY = py - 4
+        end
+
+        local pathOk = false
+        if FindPath then
+            pcall(function() pathOk = FindPath(stepX, stepY) end)
+        elseif findPath then
+            pcall(function() pathOk = findPath(stepX, stepY) end)
+        end
+
+        if pathOk then
+            for wait = 1, 15 do
+                local curX, curY = getPosXY()
+                if (curX == stepX and curY == stepY) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
+                    break
+                end
+                if sleep then sleep(100) end
+            end
+        else
+            hoverAt(stepX, stepY)
+            if sleep then sleep(120) end
+        end
+    end
+
+    hoverAt(targetX, targetY)
+    if sleep then sleep(100) end
 end
 
-local function findAdjacentWalkableTile(targetX, targetY)
-    local currentX, currentY = getPosXY()
-    local bestX, bestY = nil, nil
-    local bestDist = 999999
+local function collectRaw(objId, posX, posY)
+    if spr then
+        spr(11, objId, posX, posY)
+    elseif sendPacketRaw then
+        sendPacketRaw(false, {type = 11, value = objId, px = math.floor(posX/32), py = math.floor(posY/32), x = posX, y = posY})
+    elseif SendPacketRaw then
+        SendPacketRaw(false, {type = 11, value = objId, px = math.floor(posX/32), py = math.floor(posY/32), x = posX, y = posY})
+    end
+end
 
-    local offsets = {
-        {0, 0},
-        {-1, 0}, {1, 0}, {0, -1}, {0, 1},
-        {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
+local function Collect()
+    local px, py = getPosXY()
+    for _, obj in pairs(getObjects()) do
+        local ox = math.floor(obj.posX / 32)
+        local oy = math.floor(obj.posY / 32)
+
+        if math.abs(ox - px) <= 5 and math.abs(oy - py) <= 5 then
+            collectRaw(obj.id, obj.posX, obj.posY)
+        end
+    end
+end
+
+local function doWrench(tx, ty)
+    if wrench then
+        pcall(function() wrench(tx, ty) end)
+        return
+    end
+    if Wrench then
+        pcall(function() Wrench(tx, ty) end)
+        return
+    end
+
+    local pkt = {
+        type = 3,
+        value = 32,
+        px = tx,
+        py = ty,
+        x = tx * 32,
+        y = ty * 32
     }
 
-    for _, off in ipairs(offsets) do
-        local checkX = targetX + off[1]
-        local checkY = targetY + off[2]
-        if isTileReachable(checkX, checkY) then
-            local dist = math.abs(currentX - checkX) + math.abs(currentY - checkY)
-            if dist < bestDist then
-                bestDist = dist
-                bestX = checkX
-                bestY = checkY
-            end
-        end
+    if sendPacketRaw then
+        sendPacketRaw(false, pkt)
+    elseif SendPacketRaw then
+        SendPacketRaw(false, pkt)
     end
-
-    if bestX and bestY then
-        return bestX, bestY
-    end
-    return targetX, targetY
-end
-
-local function goToDummy(targetX, targetY, session)
-    local destX, destY = findAdjacentWalkableTile(targetX, targetY)
-
-    local function callFindPath(x, y)
-        if findPath then return findPath(x, y)
-        elseif FindPath then return FindPath(x, y)
-        end
-        return false
-    end
-
-    local function checkDistanceToGoal()
-        local curX, curY = getPosXY()
-        return math.abs(curX - targetX) <= 1 and math.abs(curY - targetY) <= 1
-    end
-
-    if checkDistanceToGoal() then
-        return true
-    end
-
-    local maxTries = 40
-    local tries = 0
-
-    while tries < maxTries do
-        if session and (session ~= wrenchSessionId or not autoWrenchEnabled) then
-            return false
-        end
-
-        local curX, curY = getPosXY()
-        if checkDistanceToGoal() then
-            return true
-        end
-
-        local diffX = destX - curX
-        local diffY = destY - curY
-        local stepX = math.max(-4, math.min(4, diffX))
-        local stepY = math.max(-4, math.min(4, diffY))
-
-        local nextX = curX + stepX
-        local nextY = curY + stepY
-
-        local ok = callFindPath(nextX, nextY)
-        if not ok then
-            callFindPath(destX, destY)
-        end
-
-        if sleep then sleep(180) end
-
-        local newX, newY = getPosXY()
-        if newX == curX and newY == curY and (diffX ~= 0 or diffY ~= 0) then
-            callFindPath(destX, destY)
-            if sleep then sleep(220) end
-        end
-
-        if checkDistanceToGoal() then
-            return true
-        end
-
-        tries = tries + 1
-    end
-
-    return checkDistanceToGoal()
 end
 
 -- ====================================
@@ -233,13 +264,13 @@ local item_ids = {
 }
 
 local function getItemIdByName(name)
-    if type(name) == "number" then return name end
-    if type(name) == "string" then
+    local id = findItemID and findItemID(name)
+    if not id or id == 0 or id == -1 then
         if name:find("Stitches") then return 1270
-        elseif name:find("Antibiotic") then return 1266
-        elseif name:find("Antiseptic") then return 1264
-        elseif name:find("Anesthetic") then return 1262
         elseif name:find("Scalpel") then return 1260
+        elseif name:find("Anesthetic") then return 1262
+        elseif name:find("Antiseptic") then return 1264
+        elseif name:find("Antibiotic") then return 1266
         elseif name:find("Splint") then return 1268
         elseif name:find("Sponge") then return 1258
         elseif name:find("Defibrillator") then return 4312
@@ -251,90 +282,151 @@ local function getItemIdByName(name)
         elseif name:find("Fix it") then return 1296
         end
     end
-    return 1270
+    return id or 1270
 end
 
 local function useTool(tool)
     local toolId = getItemIdByName(tool)
     local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(toolId) .. "\n"
-    notifyUser("`9[AutoSurg] `oUsing: `2" .. tostring(tool))
     if sendPacket then
         sendPacket(2, pkt)
     elseif SendPacket then
         SendPacket(2, pkt)
     end
+    notifyUser("`9[`cTools`9] `c" .. tostring(tool))
 end
 
-local function wrenchDummy(x, y)
-    if wrenchTile then
-        wrenchTile(x, y)
-    elseif sendPacketRaw then
-        local p = {
-            type = 3,
-            value = 32,
-            px = x,
-            py = y,
-            x = x * 32,
-            y = y * 32
-        }
-        sendPacketRaw(false, p)
-    end
-end
+local function findNearestSurgE()
+    local px, py = getPosXY()
+    local allTiles = getAllTiles()
+    local nearest = nil
+    local minDist = 999999
+    local now = os.clock()
 
-local function scanForSurgEDummy()
-    local currentX, currentY = getPosXY()
-    local bestTile = nil
-    local bestDistance = 999999
-
-    for y = 0, 59 do
-        for x = 0, 99 do
-            local key = x .. "," .. y
-            if not failedTiles[key] then
-                local t = getTileAt(x, y)
-                if t then
-                    local fg = t.fg or (t.getFg and t.getFg()) or (t.header and t.header.fg) or 0
-                    if fg == item_ids.SURG_E then
-                        local dist = math.abs(currentX - x) + math.abs(currentY - y)
-                        if dist < bestDistance then
-                            bestDistance = dist
-                            bestTile = {x = x, y = y}
-                        end
-                    end
+    for _, t in pairs(allTiles) do
+        local fg = t.fg or (t.getFg and t.getFg()) or (t.header and t.header.fg) or 0
+        if fg == item_ids.SURG_E then
+            local tx = t.x or (t.getX and t.getX()) or 0
+            local ty = t.y or (t.getY and t.getY()) or 0
+            local key = tx .. "," .. ty
+            if not failedTiles[key] or failedTiles[key] < now then
+                local dist = math.abs(tx - px) + math.abs(ty - py)
+                if dist < minDist then
+                    minDist = dist
+                    nearest = {x = tx, y = ty}
                 end
             end
         end
     end
-    return bestTile
+    return nearest
 end
 
+local function turnOffAutoSurg(reason)
+    autoWrenchEnabled = false
+    autoSurgEnabled = false
+    isSurgeryActive = false
+    currentOperatingDummy = nil
+    wrenchSessionId = (wrenchSessionId or 0) + 1
+    enableFly(false)
+
+    if editValue then
+        pcall(function() editValue("surg_master_toggle", false) end)
+        pcall(function() editValue("surg_tools_toggle", false) end)
+        pcall(function() editValue("surg_wrench_toggle", false) end)
+    end
+
+    notifyUser("`4[AutoSurg] " .. (reason or "Stopped") .. "!")
+end
+
+local function handleLowSupply(itemToFind, session)
+    local targetId = getItemIdByName(itemToFind or "Surgical Stitches")
+    notifyUser("`6[Auto Surg-E]`4 Low Supply! `oSearching dropped items...")
+
+    local foundObj = nil
+    for _, obj in pairs(getObjects()) do
+        if obj.itemid == targetId then
+            foundObj = obj
+            break
+        end
+    end
+
+    if foundObj then
+        local ox = math.floor(foundObj.posX / 32)
+        local oy = math.floor(foundObj.posY / 32)
+        notifyUser("`2[Auto Surg-E]`o Moving to supplies at (" .. ox .. ", " .. oy .. ")")
+
+        goToDummy(ox, oy, session)
+        if sleep then sleep(300) end
+        Collect()
+        if sleep then sleep(500) end
+        Collect()
+        if sleep then sleep(500) end
+    else
+        turnOffAutoSurg("No " .. (itemToFind or "Stitches") .. " dropped items found in world")
+    end
+end
+
+-- ====================================
+-- AUTO WRENCH THREAD LOOP
+-- ====================================
 local function startAutoWrenchLoop()
     if autoWrenchRunning then return end
     autoWrenchRunning = true
-    wrenchSessionId = wrenchSessionId + 1
-    local mySession = wrenchSessionId
+    wrenchSessionId = (wrenchSessionId or 0) + 1
+    local currentSession = wrenchSessionId
+    isSurgeryActive = false
+    currentOperatingDummy = nil
+    lowSupplyItem = nil
+    failedTiles = {}
 
-    local function loop()
-        enableFly(true)
-        while autoWrenchEnabled and mySession == wrenchSessionId do
-            if not isSurgeryActive then
-                local dummy = scanForSurgEDummy()
-                if dummy then
-                    currentOperatingDummy = dummy
-                    local reached = goToDummy(dummy.x, dummy.y, mySession)
-                    if reached and autoWrenchEnabled and mySession == wrenchSessionId then
-                        wrenchDummy(dummy.x, dummy.y)
-                        if sleep then sleep(500) end
-                    else
-                        local key = dummy.x .. "," .. dummy.y
-                        failedTiles[key] = true
-                        if sleep then sleep(300) end
-                    end
-                else
-                    failedTiles = {}
-                    if sleep then sleep(1000) end
+    enableFly(true)
+
+    local function worker()
+        while autoWrenchEnabled and (wrenchSessionId == currentSession) do
+            if lowSupplyItem then
+                local itemToFind = lowSupplyItem
+                lowSupplyItem = nil
+                handleLowSupply(itemToFind, currentSession)
+            end
+
+            if isSurgeryActive then
+                if currentOperatingDummy then
+                    hoverAt(currentOperatingDummy.x, currentOperatingDummy.y)
                 end
+                if sleep then sleep(200) end
             else
-                if sleep then sleep(300) end
+                local dummy = findNearestSurgE()
+                if not dummy then
+                    if sleep then sleep(1000) end
+                else
+                    goToDummy(dummy.x, dummy.y, currentSession)
+
+                    if autoWrenchEnabled and (wrenchSessionId == currentSession) then
+                        if sleep then sleep(200) end
+                        doWrench(dummy.x, dummy.y)
+
+                        for i = 1, 30 do
+                            hoverAt(dummy.x, dummy.y)
+                            if isSurgeryActive or lowSupplyItem or not autoWrenchEnabled or (wrenchSessionId ~= currentSession) then
+                                break
+                            end
+                            if sleep then sleep(100) end
+                        end
+
+                        if isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) then
+                            currentOperatingDummy = dummy
+                            local waitTimeout = 0
+                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) and waitTimeout < 120 do
+                                hoverAt(dummy.x, dummy.y)
+                                if sleep then sleep(200) end
+                                waitTimeout = waitTimeout + 1
+                            end
+                        else
+                            local key = dummy.x .. "," .. dummy.y
+                            failedTiles[key] = os.clock() + 5
+                        end
+                    end
+                end
             end
         end
         enableFly(false)
@@ -342,11 +434,11 @@ local function startAutoWrenchLoop()
     end
 
     if runThread then
-        runThread(loop)
+        runThread(worker)
     elseif RunThread then
-        RunThread(loop)
-    else
-        loop()
+        RunThread(worker)
+    elseif runCoroutine then
+        runCoroutine(worker)
     end
 end
 
@@ -500,6 +592,7 @@ local function handleValue(alias, value)
         autoWrenchEnabled = value
         if value then
             notifyUser("`2[AutoSurg] Master Enabled!")
+            enableFly(true)
             startAutoWrenchLoop()
         else
             notifyUser("`4[AutoSurg] Master Disabled!")
@@ -513,6 +606,7 @@ local function handleValue(alias, value)
         autoWrenchEnabled = value
         if value then
             notifyUser("`2[AutoSurg] Auto Wrench Enabled!")
+            enableFly(true)
             startAutoWrenchLoop()
         else
             notifyUser("`4[AutoSurg] Auto Wrench Disabled!")
@@ -521,57 +615,25 @@ local function handleValue(alias, value)
             enableFly(false)
         end
     elseif alias == "btn_stop_all_surg" then
-        autoSurgEnabled = false
-        autoWrenchEnabled = false
-        isSurgeryActive = false
-        currentOperatingDummy = nil
-        enableFly(false)
-        if editValue then
-            pcall(function() editValue("surg_master_toggle", false) end)
-            pcall(function() editValue("surg_tools_toggle", false) end)
-            pcall(function() editValue("surg_wrench_toggle", false) end)
-        end
-        notifyUser("`4[AutoSurg] All operations stopped!")
+        turnOffAutoSurg("Manual Stop")
     elseif alias == "btn_refresh_surg" then
         local act = isSurgeryActive and "OPERATING SURGERY" or (autoWrenchEnabled and "SEARCHING SURG-E" or "STANDBY (IDLE)")
         notifyUser("`9[AutoSurg Status] `oActivity: `2" .. act)
     elseif alias == "btn_stop_script" then
         -- 1. Stop all operations and loops
-        autoSurgEnabled = false
-        autoWrenchEnabled = false
-        isSurgeryActive = false
-        currentOperatingDummy = nil
-        wrenchSessionId = (wrenchSessionId or 0) + 1
+        turnOffAutoSurg("Script Unloaded")
 
         -- 2. Remove all hooks
         pcall(function()
             if removeHook then
-                removeHook("onDrawImGui")
-                removeHook("OnDrawImGui")
-                removeHook("on_draw_imgui")
                 removeHook("onvariant")
                 removeHook("onvalue")
                 removeHook("onVariant")
                 removeHook("OnVariant")
-                removeHook("on_variant")
                 removeHook("onValue")
                 removeHook("OnValue")
-                removeHook("on_value")
             end
         end)
-
-        -- 3. Clear module and remove category/icon
-        pcall(function()
-            if removeCategory then pcall(function() removeCategory("AutoSurg") end) end
-            if removeModule then pcall(function() removeModule("AutoSurg") end) end
-            if deleteCategory then pcall(function() deleteCategory("AutoSurg") end) end
-            if addIntoModule then
-                pcall(function() addIntoModule("{}", "AutoSurg") end)
-                pcall(function() addIntoModule("[]", "AutoSurg") end)
-            end
-        end)
-
-        notifyUser("`4[AutoSurg] Script Stopped & Unloaded!")
     end
 end
 
@@ -593,13 +655,13 @@ function OnValue(menuType, name, value)
 end
 onValue = OnValue
 
--- Register hooks cleanly (minimal logs)
+-- Register hooks cleanly
 if addHook then
     pcall(function() addHook(onVariant, "onvariant") end)
     pcall(function() addHook(OnValue, "onvalue") end)
 end
 
--- Build and Register Native Module UI (Only 1 single category: AutoSurg)
+-- Build and Register Native Module UI (Single Category: AutoSurg)
 pcall(function()
     if UserInterface and UserInterface.new then
         local ui = UserInterface.new("AutoSurg", "Verified")
@@ -628,6 +690,6 @@ end)
 
 if applyHook then pcall(applyHook) end
 
--- Mark initialization complete and show clean single startup notice
+-- Mark initialization complete and show single startup notice
 isInitialized = true
 notifyUser("AutoSurg by zama")
