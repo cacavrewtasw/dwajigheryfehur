@@ -27,7 +27,8 @@ local autoWrenchRunning = false
 local isInitialized = false
 
 -- ====================================
--- NOTIFICATION HELPER
+-- NOTIFICATION HELPER (IN-GAME CHAT & OVERLAY ONLY)
+-- (sendNotification black card is removed per user request)
 -- ====================================
 local function notifyUser(text)
     -- In-game console chat message (top-left chat)
@@ -40,11 +41,6 @@ local function notifyUser(text)
     -- OnTextOverlay (floating text in center of screen)
     if sendVariant then
         pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
-    end
-
-    -- Native Launcher notification
-    if sendNotification then
-        pcall(function() sendNotification(text) end)
     end
 end
 
@@ -138,7 +134,7 @@ local function enableFly(state)
 end
 
 local function goToDummy(targetX, targetY, session)
-    local maxTotalSteps = 60
+    local maxTotalSteps = 30
     local totalSteps = 0
 
     while autoWrenchEnabled and (not session or wrenchSessionId == session) and totalSteps < maxTotalSteps do
@@ -147,7 +143,8 @@ local function goToDummy(targetX, targetY, session)
         local dx = targetX - px
         local dy = targetY - py
 
-        if dx == 0 and dy == 0 then
+        -- Within wrench range (adjacent distance <= 1)
+        if math.abs(dx) <= 1 and math.abs(dy) <= 1 then
             break
         end
 
@@ -156,7 +153,7 @@ local function goToDummy(targetX, targetY, session)
 
         -- Step 4-5 tiles towards target
         if math.abs(dx) <= 4 then
-            stepX = targetX
+            stepX = targetX > px and (targetX - 1) or (targetX < px and (targetX + 1) or targetX)
         elseif dx > 0 then
             stepX = px + 4
         else
@@ -179,16 +176,16 @@ local function goToDummy(targetX, targetY, session)
         end
 
         if pathOk then
-            for wait = 1, 15 do
+            for wait = 1, 10 do
                 local curX, curY = getPosXY()
-                if (curX == stepX and curY == stepY) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
+                if (math.abs(curX - stepX) <= 1 and math.abs(curY - stepY) <= 1) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
                     break
                 end
-                if sleep then sleep(100) end
+                if sleep then sleep(80) end
             end
         else
             hoverAt(stepX, stepY)
-            if sleep then sleep(120) end
+            if sleep then sleep(100) end
         end
     end
 
@@ -225,6 +222,10 @@ local function doWrench(tx, ty)
     end
     if Wrench then
         pcall(function() Wrench(tx, ty) end)
+        return
+    end
+    if wrenchTile then
+        pcall(function() wrenchTile(tx, ty) end)
         return
     end
 
@@ -298,7 +299,10 @@ end
 
 local function findNearestSurgE()
     local px, py = getPosXY()
-    local allTiles = getAllTiles()
+    local allTiles = getTiles()
+    if not allTiles or #allTiles == 0 then
+        allTiles = getAllTiles()
+    end
     local nearest = nil
     local minDist = 999999
     local now = os.clock()
@@ -326,6 +330,7 @@ local function turnOffAutoSurg(reason)
     autoSurgEnabled = false
     isSurgeryActive = false
     currentOperatingDummy = nil
+    autoWrenchRunning = false
     wrenchSessionId = (wrenchSessionId or 0) + 1
     enableFly(false)
 
@@ -370,10 +375,9 @@ end
 -- AUTO WRENCH THREAD LOOP
 -- ====================================
 local function startAutoWrenchLoop()
-    if autoWrenchRunning then return end
-    autoWrenchRunning = true
     wrenchSessionId = (wrenchSessionId or 0) + 1
     local currentSession = wrenchSessionId
+    autoWrenchRunning = true
     isSurgeryActive = false
     currentOperatingDummy = nil
     lowSupplyItem = nil
@@ -397,15 +401,19 @@ local function startAutoWrenchLoop()
             else
                 local dummy = findNearestSurgE()
                 if not dummy then
+                    -- Reset cooldowns if all dummies in world were visited
+                    failedTiles = {}
                     if sleep then sleep(1000) end
                 else
+                    local dummyKey = dummy.x .. "," .. dummy.y
                     goToDummy(dummy.x, dummy.y, currentSession)
 
                     if autoWrenchEnabled and (wrenchSessionId == currentSession) then
                         if sleep then sleep(200) end
                         doWrench(dummy.x, dummy.y)
 
-                        for i = 1, 30 do
+                        -- Wait up to 2.5 seconds for surgery to start
+                        for i = 1, 25 do
                             hoverAt(dummy.x, dummy.y)
                             if isSurgeryActive or lowSupplyItem or not autoWrenchEnabled or (wrenchSessionId ~= currentSession) then
                                 break
@@ -416,29 +424,35 @@ local function startAutoWrenchLoop()
                         if isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) then
                             currentOperatingDummy = dummy
                             local waitTimeout = 0
-                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) and waitTimeout < 120 do
+                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) and waitTimeout < 150 do
                                 hoverAt(dummy.x, dummy.y)
                                 if sleep then sleep(200) end
                                 waitTimeout = waitTimeout + 1
                             end
+                            -- Finished operating: cooldown this dummy for 3 minutes so it loops to next dummy!
+                            failedTiles[dummyKey] = os.clock() + 180
+                            isSurgeryActive = false
+                            currentOperatingDummy = nil
+                            if sleep then sleep(300) end
                         else
-                            local key = dummy.x .. "," .. dummy.y
-                            failedTiles[key] = os.clock() + 5
+                            -- Dummy didn't open surgery: retry in 15 seconds
+                            failedTiles[dummyKey] = os.clock() + 15
                         end
                     end
                 end
             end
+            if sleep then sleep(50) end
         end
         enableFly(false)
         autoWrenchRunning = false
     end
 
-    if runThread then
+    if runCoroutine then
+        runCoroutine(worker)
+    elseif runThread then
         runThread(worker)
     elseif RunThread then
         RunThread(worker)
-    elseif runCoroutine then
-        runCoroutine(worker)
     end
 end
 
@@ -592,7 +606,6 @@ local function handleValue(alias, value)
         autoWrenchEnabled = value
         if value then
             notifyUser("`2[AutoSurg] Master Enabled!")
-            enableFly(true)
             startAutoWrenchLoop()
         else
             notifyUser("`4[AutoSurg] Master Disabled!")
@@ -606,7 +619,6 @@ local function handleValue(alias, value)
         autoWrenchEnabled = value
         if value then
             notifyUser("`2[AutoSurg] Auto Wrench Enabled!")
-            enableFly(true)
             startAutoWrenchLoop()
         else
             notifyUser("`4[AutoSurg] Auto Wrench Disabled!")
@@ -632,6 +644,13 @@ local function handleValue(alias, value)
                 removeHook("OnVariant")
                 removeHook("onValue")
                 removeHook("OnValue")
+            end
+        end)
+
+        -- 3. Clear module via official addIntoModule("{}") API
+        pcall(function()
+            if addIntoModule then
+                addIntoModule("{}", "AutoSurg")
             end
         end)
     end
