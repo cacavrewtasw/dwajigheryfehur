@@ -39,20 +39,30 @@ local function notifyUser(text)
     -- In-game console / chat message (appears in game chat log)
     if logToConsole then pcall(function() logToConsole(text) end) end
     if LogToConsole then pcall(function() LogToConsole(text) end) end
+    if log then pcall(function() log(text) end) end
     if growtopia and growtopia.sendChat then
         pcall(function() growtopia.sendChat(text, true) end)
     end
 
+    -- OnTextOverlay (floating text on screen)
     -- OnTextOverlay (floating text on screen - single clean render)
     if sendVariant then
         pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
+        pcall(function() sendVariant({ [0] = "OnTextOverlay", [1] = text }) end)
     end
 
     -- Growlauncher native notification
     if sendNotification then
         pcall(function() sendNotification(text) end)
     end
+    if growtopia and growtopia.notify then
+        pcall(function() growtopia.notify(text) end)
+    end
+
+    if print then print(text) end
 end
+
+notifyUser("AutoSurg by zama")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -83,8 +93,23 @@ local function getTileAt(x, y)
     return nil
 end
 
-local function enableFly(enable)
-    -- Bot does not fly
+local function enableFly(state)
+    if editToggle then pcall(function() editToggle("ModFly", state) end) end
+    if EditToggle then pcall(function() EditToggle("ModFly", state) end) end
+    if editValue then pcall(function() editValue("ModFly", state) end) end
+    if EditValue then pcall(function() EditValue("ModFly", state) end) end
+    if setValue then pcall(function() setValue("ModFly", state) end) end
+    if SetValue then pcall(function() SetValue("ModFly", state) end) end
+    pcall(function() if editToggle then editToggle("Fly", state) end end)
+    pcall(function() if editValue then editValue("Fly", state) end end)
+    if state then
+        pcall(function()
+            if sendPacket then
+                sendPacket(2, "action|input\n|text|/fly\n")
+                sendPacket(2, "action|input\n|text|/modfly\n")
+            end
+        end)
+    end
 end
 
 local function isTileReachable(tileX, tileY)
@@ -521,12 +546,17 @@ local function handleValue(alias, value)
         -- 2. Remove all hooks
         pcall(function()
             if removeHook then
+                removeHook("onDrawImGui")
+                removeHook("OnDrawImGui")
+                removeHook("on_draw_imgui")
                 removeHook("onvariant")
                 removeHook("onvalue")
                 removeHook("onVariant")
                 removeHook("OnVariant")
+                removeHook("on_variant")
                 removeHook("onValue")
                 removeHook("OnValue")
+                removeHook("on_value")
             end
         end)
 
