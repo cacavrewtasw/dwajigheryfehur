@@ -196,8 +196,31 @@ local item_ids = {
     SURG_E = 4296
 }
 
-local function useTool(itemID)
-    local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(itemID) .. "\n"
+local function getItemIdByName(name)
+    if type(name) == "number" then return name end
+    if type(name) == "string" then
+        if name:find("Stitches") then return 1270
+        elseif name:find("Antibiotic") then return 1266
+        elseif name:find("Antiseptic") then return 1264
+        elseif name:find("Anesthetic") then return 1262
+        elseif name:find("Scalpel") then return 1260
+        elseif name:find("Splint") then return 1268
+        elseif name:find("Sponge") then return 1258
+        elseif name:find("Defibrillator") then return 4312
+        elseif name:find("Clamp") then return 4314
+        elseif name:find("Ultrasound") then return 4316
+        elseif name:find("Lab") then return 4318
+        elseif name:find("Pins") then return 4308
+        elseif name:find("Transfusion") then return 4310
+        elseif name:find("Fix it") then return 1296
+        end
+    end
+    return 1270
+end
+
+local function useTool(tool)
+    local toolId = getItemIdByName(tool)
+    local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(toolId) .. "\n"
     if sendPacket then
         sendPacket(2, pkt)
     elseif SendPacket then
@@ -291,6 +314,130 @@ local function startAutoWrenchLoop()
 end
 
 -- ====================================
+-- SURGERY DIALOG ENGINE (ONVARIANT)
+-- ====================================
+local function onVariant(var)
+    local v1 = var.v1 or (var.get and var:get(0) and var:get(0):getString()) or var[0] or var[1]
+    if v1 == "OnDialogRequest" then
+        local dialog = var.v2 or (var.get and var:get(1) and var:get(1):getString()) or var[1] or var[2]
+        if type(dialog) ~= "string" then return false end
+
+        -- 1. Check Low Supply Warning on Surg-E pre-popup
+        if dialog:find("Low Supply Warning:") or dialog:find("Low Supply Warning") then
+            local lowName = dialog:match("You only have [^|]*``%s*([^\r\n|]+)") or "Surgical Stitches"
+            lowName = lowName:gsub("`.", ""):match("^%s*(.-)%s*$")
+            lowSupplyItem = lowName
+            isSurgeryActive = false
+
+            if sendPacket then
+                sendPacket(2, "action|dialog_return\ndialog_name|surge\nbuttonClicked|cancel\n")
+            end
+            notifyUser("`4[Low Supply Warning]`o " .. lowName .. "! Collecting...")
+            return true
+        end
+
+        -- 2. Check Surg-E pre-popup (Accept surgery)
+        if dialog:find("end_dialog|surge|Cancel|Okay!|") then
+            if autoWrenchEnabled or autoSurgEnabled then
+                local tilex = dialog:match("tilex|(%d+)")
+                local tiley = dialog:match("tiley|(%d+)")
+                isSurgeryActive = true
+                if tilex and tiley then
+                    currentOperatingDummy = {x = tonumber(tilex), y = tonumber(tiley)}
+                end
+                if sendPacket then
+                    sendPacket(2, "action|dialog_return\ndialog_name|surge\ntilex|" .. (tilex or "") .. "|\ntiley|" .. (tiley or "") .. "|\n")
+                end
+                return true
+            end
+        end
+
+        -- 3. Only run tool actions if autoSurgEnabled is ON
+        if not autoSurgEnabled then return false end
+
+        if dialog:find("add_button|surgery|`%$Perform Surgery``|noflags|0|0|") then
+            local netID = dialog:match("netID|(%d+)")
+            if sendPacket and netID then
+                sendPacket(2, "action|dialog_return\ndialog_name|popup\nnetID|" .. netID .. "|\nbuttonClicked|surgery")
+            end
+            return true
+        end
+
+        if (dialog:find("heart has stopped") or dialog:find("Heart stopped")) and dialog:find("tool4312") then
+            if sleep then sleep(50) end
+            useTool("Defibrillator")
+            return true
+        end
+
+        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") then
+            isSurgeryActive = false
+        end
+
+        local rules = {
+            { tool = "Anesthetic",    need = { "`4The patient wakes up!",              "tool1262" } },
+            { tool = "Anesthetic",    need = { "`4The patient screams and flails!",    "tool1262" } },
+            { tool = "Defibrillator", need = { "Status: `4Heart stopped!",             "tool4312" } },
+            { tool = "Anesthetic",    need = { "Status: `6Coming to",                  "tool1262" } },
+            { tool = "Transfusion",   need = { "Pulse: `4",                            "tool4310" } },
+            { tool = "Antibiotic",    need = { "Temp: `4",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `4",                             "tool4318" } },
+            { tool = "Antibiotic",    need = { "Temp: `6",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `6",                             "tool4318" } },
+            { tool = "Antibiotic",    need = { "Temp: `3",                             "tool1266" } },
+            { tool = "Lab kit",       need = { "Temp: `3",                             "tool4318" } },
+            { tool = "Clamp",         need = { "Patient is losing blood `4very quickly!", "tool4314" } },
+            { tool = "Stitches",      need = { "Patient is losing blood `4very quickly!", "tool1270" } },
+            { tool = "Clamp",         need = { "Patient is `6losing blood!",           "tool4314" } },
+            { tool = "Stitches",      need = { "Patient is `6losing blood!",           "tool1270" } },
+            { tool = "Fix it",        need = { "tool1296" } },
+            { tool = "Fix it",        need = { "Incisions: `20",                       "tool1296" } },
+            { tool = "Fix it",        need = { "Incisions: `30",                       "tool1296" } },
+            { tool = "Ultrasound",    need = { "The patient has not been diagnosed.",  "tool4316" } },
+            { tool = "Anesthetic",    need = { "Status: `4Awake",                      "tool1262" } },
+            { tool = "Splint",        need = { "Bones: `6", " broken``",               "tool1268" } },
+            { tool = "Splint",        need = { "Bones: `4", " broken``",               "tool1268" } },
+            { tool = "Stitches",      need = { "Patient broke his arm.",               "tool1270" } },
+            { tool = "Anesthetic",    need = { "Status: `3Awake",                      "tool1262" } },
+            { tool = "Transfusion",   need = { "Pulse: `6",                            "tool4310" } },
+            { tool = "Defibrillator", need = { "The patient's heart has stopped!",    "tool4312" } },
+            { tool = "Sponge",        need = { "`4You can't see what you are doing!",  "tool1258" } },
+            { tool = "Pins",          need = { "Bones: `6", ", `6", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", ", `6", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", ", `6", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", ", `6", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `6", ", `4", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", ", `4", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", ", `4", " shattered",     "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", ", `4", " shattered",     "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `6", " shattered",             "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `6", " shattered",             "tool1260" } },
+            { tool = "Pins",          need = { "Bones: `4", " shattered",             "tool4308" } },
+            { tool = "Scalpel",       need = { "Bones: `4", " shattered",             "tool1260" } },
+            { tool = "Stitches",      need = { "Incisions: `6",                        "tool1270" } },
+            { tool = "Stitches",      need = { "Patient broke his leg.",               "tool1270" } },
+            { tool = "Clamp",         need = { "Patient is losing blood `3slowly.",   "tool4314" } },
+            { tool = "Scalpel",       need = { "tool1260" } },
+        }
+
+        for _, rule in ipairs(rules) do
+            local ok = true
+            for _, pattern in ipairs(rule.need) do
+                if not dialog:find(pattern, 1, true) then
+                    ok = false
+                    break
+                end
+            end
+            if ok then
+                useTool(rule.tool)
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+-- ====================================
 -- GROWLAUNCHER NATIVE MODULE INTEGRATION
 -- ====================================
 local function handleValue(alias, value)
@@ -361,54 +508,37 @@ local function safeRegisterHook(func, hookName)
     if AddHook then pcall(function() AddHook(hookName, "ZamaHook", func) end) end
 end
 
+-- Register hooks for variant and module value
+safeRegisterHook(onVariant, "onVariant")
+safeRegisterHook(onVariant, "OnVariant")
+safeRegisterHook(onVariant, "on_variant")
 safeRegisterHook(OnValue, "onValue")
 safeRegisterHook(OnValue, "OnValue")
 
--- Build and Register Native Module UI
-local function registerAutoSurgModule()
-    pcall(function()
-        if UserInterface and UserInterface.new then
-            local ui = UserInterface.new("AutoSurg", "Verified")
-            ui:addLabelApp("AutoSurg // Zama Store", "Verified")
-            ui:addTooltip("Information", "Surg-E & Surgery Automation", "Info", false)
-            ui:addDivider()
-            ui:addToggle("Master Enable", false, "surg_master_toggle", false)
-            ui:addToggle("Auto Surg (Tools)", false, "surg_tools_toggle", false)
-            ui:addToggle("Auto Wrench Surg-E", false, "surg_wrench_toggle", false)
-            ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
-            ui:addButton("Refresh Status", "btn_refresh_surg")
-            ui:addButton("Stop All Operations", "btn_stop_all_surg")
+-- Build and Register Native Module UI (Only 1 single category: AutoSurg)
+pcall(function()
+    if UserInterface and UserInterface.new then
+        local ui = UserInterface.new("AutoSurg", "Verified")
+        ui:addLabelApp("AutoSurg // Zama Store", "Verified")
+        ui:addTooltip("Information", "Surg-E & Surgery Automation", "Info", false)
+        ui:addDivider()
+        ui:addToggle("Master Enable", false, "surg_master_toggle", false)
+        ui:addToggle("Auto Surg (Tools)", false, "surg_tools_toggle", false)
+        ui:addToggle("Auto Wrench Surg-E", false, "surg_wrench_toggle", false)
+        ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
+        ui:addButton("Refresh Status", "btn_refresh_surg")
+        ui:addButton("Stop All Operations", "btn_stop_all_surg")
 
-            local json = ui:generateJSON()
+        local json = ui:generateJSON()
 
-            if addCategory then
-                pcall(function() addCategory("AutoSurg", "Verified") end)
-                pcall(function() addCategory("Scripts", "Code") end)
-            end
-
-            if addIntoModule then
-                pcall(function() addIntoModule(json, "AutoSurg") end)
-                pcall(function() addIntoModule(json, "Scripts") end)
-            end
+        if addCategory then
+            pcall(function() addCategory("AutoSurg", "Verified") end)
         end
-    end)
-end
 
--- Register immediately
-registerAutoSurgModule()
-
--- Also register in background coroutine if launcher needs time to initialize
-local function runBgInit()
-    if sleep then sleep(1000) end
-    registerAutoSurgModule()
-end
-
-if runCoroutine then
-    runCoroutine(runBgInit)
-elseif runThread then
-    runThread(runBgInit)
-elseif RunThread then
-    RunThread(runBgInit)
-end
+        if addIntoModule then
+            pcall(function() addIntoModule(json, "AutoSurg") end)
+        end
+    end
+end)
 
 if applyHook then pcall(applyHook) end
