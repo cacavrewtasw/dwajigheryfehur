@@ -35,6 +35,9 @@ end)
 
 -- Safe Notification Helper
 local function notifyUser(text)
+    if sendNotification then
+        pcall(function() sendNotification(text) end)
+    end
     if growtopia and growtopia.notify then
         pcall(function() growtopia.notify(text) end)
     elseif logToConsole then
@@ -224,6 +227,7 @@ end
 local function useTool(tool)
     local toolId = getItemIdByName(tool)
     local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(toolId) .. "\n"
+    notifyUser("`9[AutoSurg] `oUsing: `2" .. tostring(tool))
     if sendPacket then
         sendPacket(2, pkt)
     elseif SendPacket then
@@ -372,8 +376,12 @@ local function onVariant(var)
             return true
         end
 
-        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") then
+        if dialog:find("You succeeded") then
             isSurgeryActive = false
+            notifyUser("`2[AutoSurg] `aSurgery Succeeded!")
+        elseif dialog:find("You failed") or dialog:find("destroyed in the process") then
+            isSurgeryActive = false
+            notifyUser("`4[AutoSurg] `4Surgery Failed!")
         end
 
         local rules = {
