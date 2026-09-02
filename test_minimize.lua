@@ -23,24 +23,14 @@ local lowSupplyItem = nil
 local currentOperatingDummy = nil
 local failedTiles = {}
 local wrenchSessionId = 0
-local autoWrenchRunning = false
 local isInitialized = false
 
 -- ====================================
--- NOTIFICATION HELPER (IN-GAME CHAT & OVERLAY ONLY)
--- (sendNotification black card is removed per user request)
+-- NOTIFICATION (ONLY growtopia.notify)
 -- ====================================
 local function notifyUser(text)
-    -- In-game console chat message (top-left chat)
-    if logToConsole then pcall(function() logToConsole(text) end) end
-    if LogToConsole then pcall(function() LogToConsole(text) end) end
-    if growtopia and growtopia.sendChat then
-        pcall(function() growtopia.sendChat(text, true) end)
-    end
-
-    -- OnTextOverlay (floating text in center of screen)
-    if sendVariant then
-        pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
+    if growtopia and growtopia.notify then
+        pcall(function() growtopia.notify(text) end)
     end
 end
 
@@ -96,6 +86,8 @@ local function hoverAt(tx, ty)
 
     if sendVariant then
         pcall(function() sendVariant({ v1 = "OnSetPos", v2 = { px, py } }) end)
+        pcall(function() sendVariant({ [0] = "OnSetPos", [1] = { px, py } }) end)
+        pcall(function() sendVariant({ "OnSetPos", { px, py } }) end)
     end
 
     local pkt = {
@@ -134,7 +126,7 @@ local function enableFly(state)
 end
 
 local function goToDummy(targetX, targetY, session)
-    local maxTotalSteps = 30
+    local maxTotalSteps = 60
     local totalSteps = 0
 
     while autoWrenchEnabled and (not session or wrenchSessionId == session) and totalSteps < maxTotalSteps do
@@ -143,8 +135,7 @@ local function goToDummy(targetX, targetY, session)
         local dx = targetX - px
         local dy = targetY - py
 
-        -- Within wrench range (adjacent distance <= 1)
-        if math.abs(dx) <= 1 and math.abs(dy) <= 1 then
+        if dx == 0 and dy == 0 then
             break
         end
 
@@ -153,7 +144,7 @@ local function goToDummy(targetX, targetY, session)
 
         -- Step 4-5 tiles towards target
         if math.abs(dx) <= 4 then
-            stepX = targetX > px and (targetX - 1) or (targetX < px and (targetX + 1) or targetX)
+            stepX = targetX
         elseif dx > 0 then
             stepX = px + 4
         else
@@ -176,16 +167,16 @@ local function goToDummy(targetX, targetY, session)
         end
 
         if pathOk then
-            for wait = 1, 10 do
+            for wait = 1, 15 do
                 local curX, curY = getPosXY()
-                if (math.abs(curX - stepX) <= 1 and math.abs(curY - stepY) <= 1) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
+                if (curX == stepX and curY == stepY) or not autoWrenchEnabled or (session and wrenchSessionId ~= session) then
                     break
                 end
-                if sleep then sleep(80) end
+                if sleep then sleep(100) end
             end
         else
             hoverAt(stepX, stepY)
-            if sleep then sleep(100) end
+            if sleep then sleep(120) end
         end
     end
 
@@ -246,23 +237,34 @@ local function doWrench(tx, ty)
 end
 
 -- ====================================
--- AUTO SURG & SURG-E CORE LOGIC
+-- AUTO SURG TOOLS & LOGIC
 -- ====================================
-local item_ids = {
-    SPONGE = 1258,
-    SCALPEL = 1260,
-    ANESTHETIC = 1262,
-    ANTISEPTIC = 1264,
-    ANTIBIOTIC = 1266,
-    SPLINT = 1268,
-    PINS = 1270,
-    TRANSFUSION = 4308,
-    DEFIBRILLATOR = 4310,
-    LABKIT = 4312,
-    STITCHES = 4314,
-    ULTRASOUND = 4316,
-    SURG_E = 4296
+local toolIds = {
+    ["Sponge"]        = 1258,
+    ["Splint"]        = 1268,
+    ["Antibiotic"]    = 1266,
+    ["Anesthetic"]    = 1262,
+    ["Scalpel"]       = 1260,
+    ["Stitches"]      = 1270,
+    ["Lab kit"]       = 4318,
+    ["Pins"]          = 4308,
+    ["Clamp"]         = 4314,
+    ["Transfusion"]   = 4310,
+    ["Ultrasound"]    = 4316,
+    ["Defibrillator"] = 4312,
+    ["Fix it"]        = 1296,
 }
+
+local function useTool(toolName)
+    local itool = toolIds[toolName]
+    if not itool then return end
+    if sendPacket then
+        sendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
+    elseif SendPacket then
+        SendPacket(2, "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. itool)
+    end
+    notifyUser("`9[`cTools`9] `c" .. toolName)
+end
 
 local function getItemIdByName(name)
     local id = findItemID and findItemID(name)
@@ -286,30 +288,16 @@ local function getItemIdByName(name)
     return id or 1270
 end
 
-local function useTool(tool)
-    local toolId = getItemIdByName(tool)
-    local pkt = "action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool" .. tostring(toolId) .. "\n"
-    if sendPacket then
-        sendPacket(2, pkt)
-    elseif SendPacket then
-        SendPacket(2, pkt)
-    end
-    notifyUser("`9[`cTools`9] `c" .. tostring(tool))
-end
-
 local function findNearestSurgE()
     local px, py = getPosXY()
-    local allTiles = getTiles()
-    if not allTiles or #allTiles == 0 then
-        allTiles = getAllTiles()
-    end
+    local allTiles = getAllTiles()
     local nearest = nil
     local minDist = 999999
     local now = os.clock()
 
     for _, t in pairs(allTiles) do
         local fg = t.fg or (t.getFg and t.getFg()) or (t.header and t.header.fg) or 0
-        if fg == item_ids.SURG_E then
+        if fg == 4296 then
             local tx = t.x or (t.getX and t.getX()) or 0
             local ty = t.y or (t.getY and t.getY()) or 0
             local key = tx .. "," .. ty
@@ -330,7 +318,6 @@ local function turnOffAutoSurg(reason)
     autoSurgEnabled = false
     isSurgeryActive = false
     currentOperatingDummy = nil
-    autoWrenchRunning = false
     wrenchSessionId = (wrenchSessionId or 0) + 1
     enableFly(false)
 
@@ -367,7 +354,8 @@ local function handleLowSupply(itemToFind, session)
         Collect()
         if sleep then sleep(500) end
     else
-        turnOffAutoSurg("No " .. (itemToFind or "Stitches") .. " dropped items found in world")
+        notifyUser("`4[Auto Surg-E]`o No dropped " .. (itemToFind or "Stitches") .. " found in world!")
+        if sleep then sleep(1500) end
     end
 end
 
@@ -377,7 +365,6 @@ end
 local function startAutoWrenchLoop()
     wrenchSessionId = (wrenchSessionId or 0) + 1
     local currentSession = wrenchSessionId
-    autoWrenchRunning = true
     isSurgeryActive = false
     currentOperatingDummy = nil
     lowSupplyItem = nil
@@ -388,9 +375,8 @@ local function startAutoWrenchLoop()
     local function worker()
         while autoWrenchEnabled and (wrenchSessionId == currentSession) do
             if lowSupplyItem then
-                local itemToFind = lowSupplyItem
+                handleLowSupply(lowSupplyItem, currentSession)
                 lowSupplyItem = nil
-                handleLowSupply(itemToFind, currentSession)
             end
 
             if isSurgeryActive then
@@ -401,19 +387,16 @@ local function startAutoWrenchLoop()
             else
                 local dummy = findNearestSurgE()
                 if not dummy then
-                    -- Reset cooldowns if all dummies in world were visited
                     failedTiles = {}
                     if sleep then sleep(1000) end
                 else
-                    local dummyKey = dummy.x .. "," .. dummy.y
                     goToDummy(dummy.x, dummy.y, currentSession)
 
                     if autoWrenchEnabled and (wrenchSessionId == currentSession) then
                         if sleep then sleep(200) end
                         doWrench(dummy.x, dummy.y)
 
-                        -- Wait up to 2.5 seconds for surgery to start
-                        for i = 1, 25 do
+                        for i = 1, 30 do
                             hoverAt(dummy.x, dummy.y)
                             if isSurgeryActive or lowSupplyItem or not autoWrenchEnabled or (wrenchSessionId ~= currentSession) then
                                 break
@@ -424,43 +407,54 @@ local function startAutoWrenchLoop()
                         if isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) then
                             currentOperatingDummy = dummy
                             local waitTimeout = 0
-                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) and waitTimeout < 150 do
+                            while isSurgeryActive and autoWrenchEnabled and (wrenchSessionId == currentSession) do
                                 hoverAt(dummy.x, dummy.y)
                                 if sleep then sleep(200) end
                                 waitTimeout = waitTimeout + 1
+
+                                local t = getTileAt(dummy.x, dummy.y)
+                                if t and (t.fg or (t.getFg and t.getFg()) or 0) ~= 4296 then
+                                    if sleep then sleep(1000) end
+                                    isSurgeryActive = false
+                                    break
+                                end
+
+                                if waitTimeout > 300 then
+                                    isSurgeryActive = false
+                                    break
+                                end
                             end
-                            -- Finished operating: cooldown this dummy for 3 minutes so it loops to next dummy!
-                            failedTiles[dummyKey] = os.clock() + 180
-                            isSurgeryActive = false
+                            failedTiles[dummy.x .. "," .. dummy.y] = os.clock() + 180
                             currentOperatingDummy = nil
-                            if sleep then sleep(300) end
                         else
-                            -- Dummy didn't open surgery: retry in 15 seconds
-                            failedTiles[dummyKey] = os.clock() + 15
+                            failedTiles[dummy.x .. "," .. dummy.y] = os.clock() + 20
+                            if sleep then sleep(500) end
                         end
                     end
                 end
             end
-            if sleep then sleep(50) end
+            if sleep then sleep(100) end
         end
         enableFly(false)
-        autoWrenchRunning = false
     end
 
-    if runCoroutine then
-        runCoroutine(worker)
-    elseif runThread then
+    if runThread then
         runThread(worker)
-    elseif RunThread then
-        RunThread(worker)
+    elseif runCoroutine then
+        runCoroutine(worker)
+    else
+        local co = coroutine.create(worker)
+        coroutine.resume(co)
     end
 end
 
 -- ====================================
 -- SURGERY DIALOG ENGINE (ONVARIANT)
 -- ====================================
-local function onVariant(var)
+function onVariant(var, pkt)
     local v1 = var.v1 or (var.get and var:get(0) and var:get(0):getString()) or var[0] or var[1]
+    if type(v1) ~= "string" then return false end
+
     if v1 == "OnDialogRequest" then
         local dialog = var.v2 or (var.get and var:get(1) and var:get(1):getString()) or var[1] or var[2]
         if type(dialog) ~= "string" then return false end
@@ -512,12 +506,8 @@ local function onVariant(var)
             return true
         end
 
-        if dialog:find("You succeeded") then
+        if dialog:find("You succeeded") or dialog:find("You failed") or dialog:find("destroyed in the process") then
             isSurgeryActive = false
-            notifyUser("`2[AutoSurg] `aSurgery Succeeded!")
-        elseif dialog:find("You failed") or dialog:find("destroyed in the process") then
-            isSurgeryActive = false
-            notifyUser("`4[AutoSurg] `4Surgery Failed!")
         end
 
         local rules = {
