@@ -598,8 +598,8 @@ function onVariant(var, pkt)
 end
 
 -- ====================================
--- CLEAN & CRISP IMGUI INTERFACE
--- (Standard ImGui layout matching AutoSurg.lua)
+-- ROBUST IMGUI BUTTON RENDERER
+-- (Prevents squished 2px buttons in Growlauncher)
 -- ====================================
 local function safeTextColored(r, g, b, text)
     local ok = false
@@ -611,11 +611,36 @@ local function safeTextColored(r, g, b, text)
     end
 end
 
+local function customBtn(label, w, h)
+    local width = w or 0
+    local height = h or 26
+    local clicked = false
+
+    -- Growlauncher binding supports (label, width, height)
+    local ok = pcall(function()
+        clicked = ImGui.Button(label, width, height)
+    end)
+
+    if not ok and ImVec2 then
+        pcall(function()
+            clicked = ImGui.Button(label, ImVec2(width, height))
+        end)
+    end
+
+    if not ok and not clicked then
+        pcall(function()
+            clicked = ImGui.Button(label)
+        end)
+    end
+
+    return clicked
+end
+
 function onDrawImGui(delta)
     if not imgui_opened then return end
 
     if ImGui.SetNextWindowSize and ImVec2 and ImGui.Cond then
-        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 360), ImGui.Cond.FirstUseEver or 4) end)
+        pcall(function() ImGui.SetNextWindowSize(ImVec2(320, 370), ImGui.Cond.FirstUseEver or 4) end)
     end
 
     if ImGui.Begin("AutoSurg // Zama Store") then
@@ -623,7 +648,7 @@ function onDrawImGui(delta)
         safeTextColored(0.70, 0.60, 1.0, "[*] AutoSurg // Zama Store")
         safeTextColored(0.65, 0.68, 0.78, "Surg-E & Surgery Automation")
         if ImGui.SameLine then ImGui.SameLine() end
-        if ImGui.Button("Hide GUI##hide_top") then
+        if customBtn("Hide GUI##hide_top", 0, 22) then
             imgui_opened = false
             if editToggle then pcall(function() editToggle("enable_autosurg_imgui", false) end) end
             if editValue then pcall(function() editValue("enable_autosurg_imgui", false) end) end
@@ -634,7 +659,7 @@ function onDrawImGui(delta)
 
         -- 2. AUTHENTICATION SECTION
         safeTextColored(1.0, 0.84, 0.0, "=== KEY AUTHENTICATION ===")
-        if ImGui.Button("Get Key (Free)##get_key_btn") then
+        if customBtn("Get Key (Free)##get_key_btn", 0, 26) then
             notifyUser("Get key in Discord: discord.gg/ekuVdjF4F9 (Command: /freekey AutoSurg)")
         end
 
@@ -647,7 +672,7 @@ function onDrawImGui(delta)
         end
 
         ImGui.SameLine()
-        if ImGui.Button("Verify Key##verify_btn") then
+        if customBtn("Verify Key##verify_btn", 0, 26) then
             local k = (keyInputBuffer or ""):gsub("%s+", "")
             if k == "vip" or k == "premium" or k:lower() == "zama" or k:sub(1,3) == "FK-" or #k >= 4 then
                 is_authenticated = true
@@ -683,7 +708,7 @@ function onDrawImGui(delta)
         ImGui.SameLine()
         local masterActive = autoSurgEnabled and autoWrenchEnabled
         if masterActive then
-            if ImGui.Button("[ ON ]##master_tog") then
+            if customBtn("[ ON ]##master_tog", 65, 24) then
                 autoSurgEnabled = false
                 autoWrenchEnabled = false
                 isSurgeryActive = false
@@ -692,7 +717,7 @@ function onDrawImGui(delta)
                 notifyUser("`4[AutoSurg] Master Disabled!")
             end
         else
-            if ImGui.Button("[ OFF ]##master_tog") then
+            if customBtn("[ OFF ]##master_tog", 65, 24) then
                 if not is_authenticated then
                     notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
                 else
@@ -708,12 +733,12 @@ function onDrawImGui(delta)
         ImGui.Text("Auto Surg (Tools): ")
         ImGui.SameLine()
         if autoSurgEnabled then
-            if ImGui.Button("[ ON ]##surg_tog") then
+            if customBtn("[ ON ]##surg_tog", 65, 24) then
                 autoSurgEnabled = false
                 notifyUser("`4Auto Surg Tools Disabled")
             end
         else
-            if ImGui.Button("[ OFF ]##surg_tog") then
+            if customBtn("[ OFF ]##surg_tog", 65, 24) then
                 if not is_authenticated then
                     notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
                 else
@@ -727,7 +752,7 @@ function onDrawImGui(delta)
         ImGui.Text("Auto Wrench Surg-E:")
         ImGui.SameLine()
         if autoWrenchEnabled then
-            if ImGui.Button("[ ON ]##wrench_tog") then
+            if customBtn("[ ON ]##wrench_tog", 65, 24) then
                 autoWrenchEnabled = false
                 isSurgeryActive = false
                 currentOperatingDummy = nil
@@ -735,7 +760,7 @@ function onDrawImGui(delta)
                 notifyUser("`4Auto Wrench Disabled")
             end
         else
-            if ImGui.Button("[ OFF ]##wrench_tog") then
+            if customBtn("[ OFF ]##wrench_tog", 65, 24) then
                 if not is_authenticated then
                     notifyUser("`4[AutoSurg] Access Denied! Please verify key first.")
                 else
@@ -752,7 +777,7 @@ function onDrawImGui(delta)
         local actText = isSurgeryActive and "OPERATING SURGERY..." or (autoWrenchEnabled and "SEARCHING SURG-E..." or "STANDBY (IDLE)")
         safeTextColored(0.4, 0.85, 1.0, "Activity: " .. actText)
 
-        if ImGui.Button("Refresh Status##refresh_btn") then
+        if customBtn("Refresh Status##refresh_btn", 0, 26) then
             notifyUser("`9[AutoSurg Status] `oActivity: `2" .. actText)
         end
 
