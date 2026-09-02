@@ -37,7 +37,7 @@ local function notifyUser(text)
     end
 end
 
-notifyUser("`9[AutoSurg Test] `2Script Active! Tap `6[+] OPEN MENU `2on the floating icon.")
+notifyUser("`9[AutoSurg Test] `2Module Active! Check `6'AutoSurg' `2or `6'Scripts' `2tab in Growlauncher.")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -291,152 +291,124 @@ local function startAutoWrenchLoop()
 end
 
 -- ====================================
--- FLOATING ICON & FULL MENU TOGGLE
+-- GROWLAUNCHER NATIVE MODULE INTEGRATION
 -- ====================================
-local function safeColoredText(colorVec, text)
-    local ok = false
-    if ImGui and ImGui.TextColored then
-        if ImVec4 then
-            ok = pcall(function() ImGui.TextColored(ImVec4(colorVec[1], colorVec[2], colorVec[3], colorVec[4]), text) end)
+local function handleValue(alias, value)
+    if alias == "surg_master_toggle" then
+        autoSurgEnabled = value
+        autoWrenchEnabled = value
+        if value then
+            notifyUser("`2[AutoSurg] Master Enabled!")
+            startAutoWrenchLoop()
+        else
+            notifyUser("`4[AutoSurg] Master Disabled!")
+            isSurgeryActive = false
+            currentOperatingDummy = nil
+            enableFly(false)
         end
-        if not ok then
-            ok = pcall(function() ImGui.TextColored(colorVec, text) end)
+    elseif alias == "surg_tools_toggle" then
+        autoSurgEnabled = value
+        notifyUser(value and "`2[AutoSurg] Tools Enabled!" or "`4[AutoSurg] Tools Disabled!")
+    elseif alias == "surg_wrench_toggle" then
+        autoWrenchEnabled = value
+        if value then
+            notifyUser("`2[AutoSurg] Auto Wrench Enabled!")
+            startAutoWrenchLoop()
+        else
+            notifyUser("`4[AutoSurg] Auto Wrench Disabled!")
+            isSurgeryActive = false
+            currentOperatingDummy = nil
+            enableFly(false)
         end
-    end
-    if not ok and ImGui and ImGui.Text then
-        ImGui.Text(text)
+    elseif alias == "btn_stop_all_surg" then
+        autoSurgEnabled = false
+        autoWrenchEnabled = false
+        isSurgeryActive = false
+        currentOperatingDummy = nil
+        enableFly(false)
+        if editValue then
+            pcall(function() editValue("surg_master_toggle", false) end)
+            pcall(function() editValue("surg_tools_toggle", false) end)
+            pcall(function() editValue("surg_wrench_toggle", false) end)
+        end
+        notifyUser("`4[AutoSurg] All operations stopped!")
+    elseif alias == "btn_refresh_surg" then
+        local act = isSurgeryActive and "OPERATING SURGERY" or (autoWrenchEnabled and "SEARCHING SURG-E" or "STANDBY (IDLE)")
+        notifyUser("`9[AutoSurg Status] `oActivity: `2" .. act)
     end
 end
 
-local isMinimized = true
-
-local function zamaImGuiLoop()
-    -- Ensure dynamic size based on minimized state
-    if ImGui.SetNextWindowSize and ImVec2 then
-        if isMinimized then
-            pcall(function() ImGui.SetNextWindowSize(ImVec2(120, 68), 1) end)
-        else
-            pcall(function() ImGui.SetNextWindowSize(ImVec2(310, 360), 1) end)
-        end
-    end
-
-    local currentTier = _G.USER_TIER or user_tier or "PREMIUM"
-    local winTitle = isMinimized and "AutoSurg##main_ctrl" or ("AutoSurg [" .. currentTier .. "]##main_ctrl")
-
-    if ImGui.Begin(winTitle) then
-        if isMinimized then
-            -- ============================================================
-            -- 1. FLOATING ICON MODE
-            -- ============================================================
-            local btnSize = (ImVec2 and ImVec2(-1, 28)) or nil
-            if ImGui.Button("[+] OPEN##open_full_btn", btnSize) then
-                isMinimized = false
-            end
-
-            -- Small live activity label
-            local actText = isSurgeryActive and "Operating" or (autoWrenchEnabled and "Searching" or "Standby")
-            local actColor = isSurgeryActive and {0.2, 1, 0.2, 1} or (autoWrenchEnabled and {1, 1, 0.3, 1} or {0.6, 0.6, 0.6, 1})
-            safeColoredText(actColor, actText)
-        else
-            -- ============================================================
-            -- 2. FULL AUTOSURG MENU MODE
-            -- ============================================================
-            if currentTier == "PREMIUM" then
-                safeColoredText({1, 0.84, 0, 1}, "[*] USER: PREMIUM VIP")
-            else
-                safeColoredText({0.3, 0.85, 1, 1}, "[i] USER: FREE TRIAL")
-            end
-
-            -- Top-Right [X] Minimize button to return to floating icon
-            ImGui.SameLine()
-            if ImGui.Button("[X] Minimize##min_to_icon_btn") then
-                isMinimized = true
-            end
-
-            if ImGui.Separator then ImGui.Separator() end
-
-            -- SECTION 1: SURGERY TOOLS
-            safeColoredText({0.35, 0.85, 1, 1}, "=== SURGERY ASSISTANT ===")
-            ImGui.Text("Auto Surg (Tools)")
-            ImGui.SameLine()
-            if autoSurgEnabled then
-                if ImGui.Button("[ ON ]##surg_btn") then
-                    autoSurgEnabled = false
-                    notifyUser("`4AutoSurg Disabled")
-                end
-            else
-                if ImGui.Button("[ OFF ]##surg_btn") then
-                    autoSurgEnabled = true
-                    notifyUser("`2AutoSurg Enabled")
-                end
-            end
-
-            -- SECTION 2: SURG-E AUTOMATION
-            if ImGui.Separator then ImGui.Separator() end
-            safeColoredText({1, 0.8, 0.3, 1}, "=== SURG-E AUTOMATION ===")
-            ImGui.Text("Auto Wrench Surg-e")
-            ImGui.SameLine()
-            if autoWrenchEnabled then
-                if ImGui.Button("[ ON ]##wrench_btn") then
-                    autoWrenchEnabled = false
-                    isSurgeryActive = false
-                    currentOperatingDummy = nil
-                    lowSupplyItem = nil
-                    wrenchSessionId = (wrenchSessionId or 0) + 1
-                    enableFly(false)
-                    notifyUser("`4Auto Wrench Disabled")
-                end
-            else
-                if ImGui.Button("[ OFF ]##wrench_btn") then
-                    autoWrenchEnabled = true
-                    notifyUser("`2Auto Wrench Enabled")
-                    startAutoWrenchLoop()
-                end
-            end
-
-            -- SECTION 3: STEPPED 4-5 TILE PATHFINDING INFO
-            if ImGui.Separator then ImGui.Separator() end
-            safeColoredText({0.4, 0.9, 0.6, 1}, "Movement: 4-5 Tile Clamped (Anti-Kick)")
-
-            -- SECTION 4: LIVE STATUS
-            if ImGui.Separator then ImGui.Separator() end
-            ImGui.Text("Activity Status:")
-            ImGui.SameLine()
-            if isSurgeryActive then
-                safeColoredText({0.2, 1, 0.2, 1}, "OPERATING SURGERY...")
-            elseif autoWrenchEnabled then
-                safeColoredText({1, 1, 0.3, 1}, "SEARCHING SURG-E...")
-            else
-                safeColoredText({0.6, 0.6, 0.6, 1}, "STANDBY (IDLE)")
-            end
-
-            -- FOOTER
-            if ImGui.Separator then ImGui.Separator() end
-            if currentTier == "FREE" then
-                safeColoredText({1, 0.75, 0.2, 1}, "[*] Upgrade to Premium at discord.gg/ekuVdjF4F9")
-            else
-                safeColoredText({0.4, 1, 0.4, 1}, "[*] VIP Lifetime Active")
-            end
-            safeColoredText({0.5, 0.7, 1, 1}, "Discord: discord.gg/ekuVdjF4F9")
-        end
-
-        ImGui.End()
-    else
-        ImGui.End()
-    end
+-- Hook into module events via setOnValue if available
+if setOnValue then
+    pcall(function()
+        setOnValue("surg_master_toggle", function(val) handleValue("surg_master_toggle", val) end)
+        setOnValue("surg_tools_toggle", function(val) handleValue("surg_tools_toggle", val) end)
+        setOnValue("surg_wrench_toggle", function(val) handleValue("surg_wrench_toggle", val) end)
+        setOnValue("btn_stop_all_surg", function(val) handleValue("btn_stop_all_surg", val) end)
+        setOnValue("btn_refresh_surg", function(val) handleValue("btn_refresh_surg", val) end)
+    end)
 end
 
--- ====================================
--- REGISTER HOOKS
--- ====================================
+-- Global hook function for module value changes
+function OnValue(menuType, name, value)
+    handleValue(name, value)
+end
+onValue = OnValue
+
 local function safeRegisterHook(func, hookName)
     if addHook then pcall(function() addHook(func, hookName) end) end
     if AddHookCallback then pcall(function() AddHookCallback(func, hookName) end) end
     if AddHook then pcall(function() AddHook(hookName, "ZamaHook", func) end) end
 end
 
-safeRegisterHook(zamaImGuiLoop, "onDrawImGui")
-safeRegisterHook(zamaImGuiLoop, "OnDrawImGui")
-safeRegisterHook(zamaImGuiLoop, "on_draw_imgui")
+safeRegisterHook(OnValue, "onValue")
+safeRegisterHook(OnValue, "OnValue")
+
+-- Build and Register Native Module UI
+local function registerAutoSurgModule()
+    pcall(function()
+        if UserInterface and UserInterface.new then
+            local ui = UserInterface.new("AutoSurg", "Verified")
+            ui:addLabelApp("AutoSurg // Zama Store", "Verified")
+            ui:addTooltip("Information", "Surg-E & Surgery Automation", "Info", false)
+            ui:addDivider()
+            ui:addToggle("Master Enable", false, "surg_master_toggle", false)
+            ui:addToggle("Auto Surg (Tools)", false, "surg_tools_toggle", false)
+            ui:addToggle("Auto Wrench Surg-E", false, "surg_wrench_toggle", false)
+            ui:addTooltip("Movement Mode", "4-5 Tiles Smooth Pathfinding (Anti-Kick)", "Verified", true)
+            ui:addButton("Refresh Status", "btn_refresh_surg")
+            ui:addButton("Stop All Operations", "btn_stop_all_surg")
+
+            local json = ui:generateJSON()
+
+            if addCategory then
+                pcall(function() addCategory("AutoSurg", "Verified") end)
+                pcall(function() addCategory("Scripts", "Code") end)
+            end
+
+            if addIntoModule then
+                pcall(function() addIntoModule(json, "AutoSurg") end)
+                pcall(function() addIntoModule(json, "Scripts") end)
+            end
+        end
+    end)
+end
+
+-- Register immediately
+registerAutoSurgModule()
+
+-- Also register in background coroutine if launcher needs time to initialize
+local function runBgInit()
+    if sleep then sleep(1000) end
+    registerAutoSurgModule()
+end
+
+if runCoroutine then
+    runCoroutine(runBgInit)
+elseif runThread then
+    runThread(runBgInit)
+elseif RunThread then
+    RunThread(runBgInit)
+end
 
 if applyHook then pcall(applyHook) end
