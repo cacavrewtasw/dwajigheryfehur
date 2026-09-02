@@ -14,6 +14,7 @@ local autoWrenchRunning = false
 local wrenchSessionId = 0
 local keyInputBuffer = "vip"
 local keyStatusText = "Status: [ Verified - VIP Lifetime ]"
+local isInitialized = false
 
 -- Cleanup old hooks & module for fresh rerun
 pcall(function()
@@ -38,29 +39,20 @@ local function notifyUser(text)
     -- In-game console / chat message (appears in game chat log)
     if logToConsole then pcall(function() logToConsole(text) end) end
     if LogToConsole then pcall(function() LogToConsole(text) end) end
-    if log then pcall(function() log(text) end) end
     if growtopia and growtopia.sendChat then
         pcall(function() growtopia.sendChat(text, true) end)
     end
 
-    -- OnTextOverlay (floating text on screen)
+    -- OnTextOverlay (floating text on screen - single clean render)
     if sendVariant then
         pcall(function() sendVariant({ v1 = "OnTextOverlay", v2 = text }) end)
-        pcall(function() sendVariant({ [0] = "OnTextOverlay", [1] = text }) end)
     end
 
     -- Growlauncher native notification
     if sendNotification then
         pcall(function() sendNotification(text) end)
     end
-    if growtopia and growtopia.notify then
-        pcall(function() growtopia.notify(text) end)
-    end
-
-    if print then print(text) end
 end
-
-notifyUser("AutoSurg by zama")
 
 -- ====================================
 -- HELPER FUNCTIONS & AIR-MOVEMENT
@@ -465,6 +457,19 @@ end
 -- GROWLAUNCHER NATIVE MODULE INTEGRATION
 -- ====================================
 local function handleValue(alias, value)
+    -- Guard: Ignore default launcher value events while initializing
+    if not isInitialized then
+        if alias == "surg_master_toggle" then
+            autoSurgEnabled = value
+            autoWrenchEnabled = value
+        elseif alias == "surg_tools_toggle" then
+            autoSurgEnabled = value
+        elseif alias == "surg_wrench_toggle" then
+            autoWrenchEnabled = value
+        end
+        return
+    end
+
     if alias == "surg_master_toggle" then
         autoSurgEnabled = value
         autoWrenchEnabled = value
@@ -516,15 +521,12 @@ local function handleValue(alias, value)
         -- 2. Remove all hooks
         pcall(function()
             if removeHook then
-                removeHook("onDrawImGui")
-                removeHook("OnDrawImGui")
-                removeHook("on_draw_imgui")
+                removeHook("onvariant")
+                removeHook("onvalue")
                 removeHook("onVariant")
                 removeHook("OnVariant")
-                removeHook("on_variant")
                 removeHook("onValue")
                 removeHook("OnValue")
-                removeHook("on_value")
             end
         end)
 
@@ -561,18 +563,11 @@ function OnValue(menuType, name, value)
 end
 onValue = OnValue
 
-local function safeRegisterHook(func, hookName)
-    if addHook then pcall(function() addHook(func, hookName) end) end
-    if AddHookCallback then pcall(function() AddHookCallback(func, hookName) end) end
-    if AddHook then pcall(function() AddHook(hookName, "ZamaHook", func) end) end
+-- Register hooks cleanly (minimal logs)
+if addHook then
+    pcall(function() addHook(onVariant, "onvariant") end)
+    pcall(function() addHook(OnValue, "onvalue") end)
 end
-
--- Register hooks for variant and module value
-safeRegisterHook(onVariant, "onVariant")
-safeRegisterHook(onVariant, "OnVariant")
-safeRegisterHook(onVariant, "on_variant")
-safeRegisterHook(OnValue, "onValue")
-safeRegisterHook(OnValue, "OnValue")
 
 -- Build and Register Native Module UI (Only 1 single category: AutoSurg)
 pcall(function()
@@ -602,3 +597,7 @@ pcall(function()
 end)
 
 if applyHook then pcall(applyHook) end
+
+-- Mark initialization complete and show clean single startup notice
+isInitialized = true
+notifyUser("AutoSurg by zama")
