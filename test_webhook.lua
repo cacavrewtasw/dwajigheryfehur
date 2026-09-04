@@ -1,5 +1,5 @@
 -- =======================================================
--- GROWLAUNCHER DISCORD WEBHOOK DIAGNOSTIC & TEST SCRIPT
+-- GROWLAUNCHER DISCORD WEBHOOK & DISCORD ID TEST SCRIPT
 -- =======================================================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1545485199834480712/DrfQI97OHYB0LSzDq6ke8sYZ-G182FI1dOa4GBMLEPaNVEHFGnm3SSi-6go0w9KtDGrB"
 
@@ -15,10 +15,64 @@ local function consoleLog(msg)
     print("[WH-Test] " .. msg)
 end
 
-consoleLog("`2========== STARTING WEBHOOK DIAGNOSTIC ==========")
+consoleLog("`2========== STARTING WEBHOOK & DISCORD ID TEST ==========")
 
--- 1. Scan available global networking APIs
-consoleLog("`9[1] Scanning Global Networking Functions in _G...")
+-- 1. Test Discord ID Detection
+consoleLog("`9[1] Testing Discord ID Detection...")
+local discordIdCandidates = {
+    "getDiscordID", "GetDiscordID", "getDiscordId", "getDiscord",
+    "getUserId", "GetUserId", "discordId", "discord_id", "DISCORD_ID"
+}
+
+local detectedDiscordId = nil
+local detectedVia = "none"
+
+for _, fnName in ipairs(discordIdCandidates) do
+    local fn = _G[fnName]
+    if fn ~= nil then
+        if type(fn) == "function" then
+            local ok, id = pcall(fn)
+            if ok and id and tostring(id):gsub("%s+", "") ~= "" then
+                detectedDiscordId = tostring(id):gsub("%s+", "")
+                detectedVia = fnName .. "()"
+                consoleLog("`2  FOUND via " .. fnName .. "(): `1" .. detectedDiscordId)
+                break
+            else
+                consoleLog("`e  Checked " .. fnName .. "(): returned " .. tostring(id))
+            end
+        else
+            detectedDiscordId = tostring(fn):gsub("%s+", "")
+            detectedVia = "_G." .. fnName
+            consoleLog("`2  FOUND via _G." .. fnName .. ": `1" .. detectedDiscordId)
+            break
+        end
+    end
+end
+
+-- Also check client / bot if exists
+if not detectedDiscordId then
+    pcall(function()
+        if client and client.getDiscordID then
+            local id = client:getDiscordID()
+            if id and tostring(id) ~= "" then
+                detectedDiscordId = tostring(id)
+                detectedVia = "client:getDiscordID()"
+                consoleLog("`2  FOUND via client:getDiscordID(): `1" .. detectedDiscordId)
+            end
+        end
+    end)
+end
+
+if detectedDiscordId then
+    consoleLog("`2>>> ACTIVE DISCORD ID: `1" .. detectedDiscordId .. " `2(Source: " .. detectedVia .. ")")
+else
+    consoleLog("`4>>> DISCORD ID NOT DETECTED! (Pastikan aplikasi Discord Desktop terbuka/login)")
+end
+
+local mentionText = (detectedDiscordId and detectedDiscordId:match("%d+")) and ("<@" .. detectedDiscordId .. ">") or "<@tidak_terdeteksi>"
+
+-- 2. Scan available global networking APIs
+consoleLog("`9[2] Scanning Global Networking Functions in _G...")
 local candidateNames = {
     "makeRequest", "MakeRequest", "httpRequest", "HttpRequest",
     "sendWebhook", "SendWebhook", "webhook", "Webhook",
@@ -47,28 +101,35 @@ if #scannedMatches > 0 then
     consoleLog("`9  Other matches: `o" .. table.concat(scannedMatches, ", "))
 end
 
--- Prepare test payloads
-local simplePayload = '{"content":"Growlauncher Webhook Test: Connection Successful!"}'
-local embedPayload = [[
+-- Prepare test payloads with Discord ID Mention
+local simplePayload = string.format('{"content":"Growlauncher Webhook Test: Connection Successful! Mention: %s (Discord ID: %s)"}', mentionText, tostring(detectedDiscordId or "None"))
+
+local embedPayload = string.format([[
 {
-  "content": "<@1407053020306341969>",
-  "username": "Growlauncher Webhook Test",
+  "content": %q,
+  "username": "Growlauncher Diagnostics",
+  "avatar_url": "https://static.wikia.nocookie.net/growtopia/images/b/be/Operating_Table.png",
   "embeds": [
     {
-      "title": "🎉 Test Webhook Berhasil!",
-      "description": "Script pengirim webhook berfungsi dengan baik di Growlauncher.",
+      "title": "🎉 Webhook & Discord ID Test Berhasil!",
+      "description": "Script test berhasil mengirim webhook dari Growlauncher.",
       "color": 65280,
       "fields": [
-        { "name": "Status", "value": "SUCCESS", "inline": true },
-        { "name": "Client", "value": "Growlauncher", "inline": true }
-      ]
+        { "name": "👤 Discord ID", "value": %q, "inline": true },
+        { "name": "🔍 Source", "value": %q, "inline": true },
+        { "name": "🎮 Platform", "value": "Growlauncher", "inline": true }
+      ],
+      "footer": {
+        "text": "Zama Store // Diagnostic Tool"
+      },
+      "timestamp": %q
     }
   ]
 }
-]]
+]], mentionText, tostring(detectedDiscordId or "Not Detected"), tostring(detectedVia), os.date("!%Y-%m-%dT%H:%M:%SZ"))
 
--- 2. Test makeRequest directly (Sync / Main Thread)
-consoleLog("`9[2] Testing makeRequest (Direct / Sync)...")
+-- 3. Test makeRequest directly (Sync / Main Thread)
+consoleLog("`9[3] Testing makeRequest (Direct / Sync)...")
 if makeRequest then
     local headers = { ["Content-Type"] = "application/json" }
     
@@ -92,8 +153,8 @@ else
     consoleLog("`4  makeRequest is NOT available.")
 end
 
--- 3. Test sendWebhook if exists
-consoleLog("`9[3] Testing sendWebhook...")
+-- 4. Test sendWebhook if exists
+consoleLog("`9[4] Testing sendWebhook...")
 local hookFn = sendWebhook or SendWebhook or webhook or Webhook
 if hookFn then
     local okH, resH = pcall(hookFn, WEBHOOK_URL, simplePayload)
@@ -102,8 +163,8 @@ else
     consoleLog("`4  sendWebhook is NOT available.")
 end
 
--- 4. Test fetch if exists
-consoleLog("`9[4] Testing fetch...")
+-- 5. Test fetch if exists
+consoleLog("`9[5] Testing fetch...")
 local fetchFn = fetch or Fetch
 if fetchFn then
     -- Try POST options
@@ -121,8 +182,8 @@ else
     consoleLog("`4  fetch is NOT available.")
 end
 
--- 5. Test inside runThread (Background Thread)
-consoleLog("`9[5] Testing inside runThread...")
+-- 6. Test inside runThread (Background Thread) with Embed & Mention
+consoleLog("`9[6] Testing inside runThread (with Embed & Mention)...")
 if runThread then
     runThread(function()
         consoleLog("`e  Inside runThread execution...")
@@ -142,4 +203,3 @@ end
 
 consoleLog("`2========== DIAGNOSTIC SCRIPT FINISHED ==========")
 consoleLog("`eSilakan screenshot / copy hasil log di atas dan infokan ke chat.")
-
