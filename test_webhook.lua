@@ -20,53 +20,30 @@ consoleLog("`2========== STARTING WEBHOOK & DISCORD ID TEST ==========")
 
 -- 1. Test Discord ID Detection
 consoleLog("`9[1] Testing Discord ID Detection...")
-local discordIdCandidates = {
-    "getDiscordID", "GetDiscordID", "getDiscordId", "getDiscord",
-    "getUserId", "GetUserId", "discordId", "discord_id", "DISCORD_ID"
-}
-
-local detectedDiscordId = nil
+local rawDiscordId = nil
 local detectedVia = "none"
 
-for _, fnName in ipairs(discordIdCandidates) do
-    local fn = _G[fnName]
-    if fn ~= nil then
-        if type(fn) == "function" then
-            local ok, id = pcall(fn)
-            if ok and id and tostring(id):gsub("%s+", "") ~= "" then
-                detectedDiscordId = tostring(id):gsub("%s+", "")
-                detectedVia = fnName .. "()"
-                consoleLog("`2  FOUND via " .. fnName .. "(): `1" .. detectedDiscordId)
-                break
-            else
-                consoleLog("`e  Checked " .. fnName .. "(): returned " .. tostring(id))
-            end
-        else
-            detectedDiscordId = tostring(fn):gsub("%s+", "")
-            detectedVia = "_G." .. fnName
-            consoleLog("`2  FOUND via _G." .. fnName .. ": `1" .. detectedDiscordId)
-            break
-        end
+if getDiscordID then
+    local ok, id = pcall(getDiscordID)
+    if ok and id and tostring(id):gsub("%s+", "") ~= "" then
+        rawDiscordId = tostring(id):gsub("%s+", "")
+        detectedVia = "getDiscordID()"
+        consoleLog("`2  getDiscordID() returned: `1" .. rawDiscordId)
     end
 end
 
-if not detectedDiscordId then
-    pcall(function()
-        if client and client.getDiscordID then
-            local id = client:getDiscordID()
-            if id and tostring(id) ~= "" then
-                detectedDiscordId = tostring(id)
-                detectedVia = "client:getDiscordID()"
-                consoleLog("`2  FOUND via client:getDiscordID(): `1" .. detectedDiscordId)
-            end
-        end
-    end)
+if not rawDiscordId and GetDiscordID then
+    local ok, id = pcall(GetDiscordID)
+    if ok and id and tostring(id):gsub("%s+", "") ~= "" then
+        rawDiscordId = tostring(id):gsub("%s+", "")
+        detectedVia = "GetDiscordID()"
+        consoleLog("`2  GetDiscordID() returned: `1" .. rawDiscordId)
+    end
 end
 
--- Fallback if dummy "123" or empty
-local activeId = detectedDiscordId
+local activeId = rawDiscordId
 if not activeId or activeId == "123" or #activeId < 6 then
-    consoleLog("`e  Note: getDiscordID returned dummy '" .. tostring(activeId) .. "'. Using Fallback ID: `1" .. FALLBACK_DISCORD_ID)
+    consoleLog("`e  Note: Discord ID is '" .. tostring(activeId) .. "'. Using Fallback ID: `1" .. FALLBACK_DISCORD_ID)
     activeId = FALLBACK_DISCORD_ID
 else
     consoleLog("`2>>> ACTIVE DISCORD ID: `1" .. activeId .. " `2(Source: " .. detectedVia .. ")")
@@ -79,8 +56,7 @@ consoleLog("`9[2] Scanning Global Networking Functions in _G...")
 local candidateNames = {
     "webhook", "Webhook", "sendWebhook", "SendWebhook",
     "makeRequest", "MakeRequest", "httpRequest", "HttpRequest",
-    "fetch", "Fetch", "request", "Request",
-    "runThread", "runCoroutine", "HttpClient", "http"
+    "fetch", "Fetch", "runThread"
 }
 
 for _, name in ipairs(candidateNames) do
@@ -90,71 +66,98 @@ for _, name in ipairs(candidateNames) do
     end
 end
 
--- Prepare Native Table Payload (as documented in Growlauncher)
+-- 3. Prepare Table Payload (as documented in Growlauncher)
 local hookTable = {
     url = WEBHOOK_URL,
     content = mentionText,
-    username = "Surgery Tracker (Test)",
+    username = "Growlauncher Diagnostic",
     avatar_url = "https://static.wikia.nocookie.net/growtopia/images/b/be/Operating_Table.png",
     embed = {
-        title = "🎉 Congratulations! (Test Reward)",
-        description = "# Congratulations\n**You got :** 1 Candy Striper Cap\n**Activity :** Surgery Success\n\n> 🛒 **Order script & services:** <#1407257693365862510>",
-        color = 15844367,
+        title = "🎉 Test Webhook Growlauncher Berhasil!",
+        description = "# Webhook Test\n**Discord ID:** " .. activeId .. "\n**Status:** Berhasil Terkirim!",
+        color = 65280,
         fields = {
-            { name = "🏥 Activity", value = "Surgery Success", inline = true },
-            { name = "🎁 Rare Item", value = "1 Candy Striper Cap", inline = true },
-            { name = "👤 Mentioned ID", value = activeId, inline = true }
+            { name = "👤 Mention ID", value = mentionText, inline = true },
+            { name = "🎮 Client", value = "Growlauncher", inline = true }
         },
         footer = {
-            text = "Auto Surg // Zama Store"
+            text = "Zama Store // Diagnostic Tool"
         }
     }
 }
 
--- 3. Test Native Table Webhook APIs
-consoleLog("`9[3] Testing Native Table Webhook API (webhook / sendWebhook)...")
-local tableHookSent = false
+-- 4. Test Table-based Webhook functions
+consoleLog("`9[3] Testing Table-based Webhook APIs...")
+local sent = false
 
-if webhook then
+-- Test webhook(table)
+if not sent and webhook then
     local ok, res = pcall(webhook, hookTable)
     consoleLog("  Attempt webhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then tableHookSent = true end
+    if ok then sent = true end
 end
 
-if not tableHookSent and sendWebhook then
+-- Test sendWebhook(table)
+if not sent and sendWebhook then
     local ok, res = pcall(sendWebhook, hookTable)
     consoleLog("  Attempt sendWebhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then tableHookSent = true end
+    if ok then sent = true end
 end
 
-if not tableHookSent and SendWebhook then
+-- Test SendWebhook(table)
+if not sent and SendWebhook then
     local ok, res = pcall(SendWebhook, hookTable)
     consoleLog("  Attempt SendWebhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then tableHookSent = true end
+    if ok then sent = true end
 end
 
-if not tableHookSent and Webhook then
+-- Test Webhook(table)
+if not sent and Webhook then
     local ok, res = pcall(Webhook, hookTable)
     consoleLog("  Attempt Webhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then tableHookSent = true end
+    if ok then sent = true end
 end
 
--- 4. Test inside runThread if table hook was sent or fallback
-consoleLog("`9[4] Testing inside runThread...")
+-- 5. Fallback to String/JSON if table-based didn't succeed
+if not sent then
+    consoleLog("`9[4] Table method not sent, trying String/JSON fallbacks...")
+    local simplePayload = '{"content":"' .. mentionText .. ' Growlauncher Webhook Test (JSON fallback)"}'
+    
+    if makeRequest then
+        local headers = { ["Content-Type"] = "application/json" }
+        local ok, res = pcall(makeRequest, WEBHOOK_URL, "POST", headers, simplePayload, 8000)
+        consoleLog("  Attempt makeRequest: ok=" .. tostring(ok) .. ", res=" .. tostring(res))
+        if ok then sent = true end
+    end
+
+    if not sent and sendWebhook then
+        local ok, res = pcall(sendWebhook, WEBHOOK_URL, simplePayload)
+        consoleLog("  Attempt sendWebhook(url, payload): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
+        if ok then sent = true end
+    end
+
+    if not sent and fetch then
+        local ok, res = pcall(fetch, WEBHOOK_URL, {
+            method = "POST",
+            headers = { ["Content-Type"] = "application/json" },
+            body = simplePayload
+        })
+        consoleLog("  Attempt fetch(url, options): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
+        if ok then sent = true end
+    end
+end
+
+-- 6. Also try inside runThread
 if runThread then
     runThread(function()
-        consoleLog("`e  Inside runThread execution...")
+        consoleLog("`e[5] Testing inside runThread...")
         local hookFn = webhook or Webhook or sendWebhook or SendWebhook
         if hookFn then
             local okT, resT = pcall(hookFn, hookTable)
-            consoleLog("  runThread hookFn(table) Result: ok=" .. tostring(okT) .. ", res=" .. tostring(resT))
-        else
-            consoleLog("`4  runThread: no hook function found.")
+            consoleLog("  runThread hookFn(table): ok=" .. tostring(okT) .. ", res=" .. tostring(resT))
         end
     end)
-else
-    consoleLog("`4  runThread is NOT available.")
 end
 
 consoleLog("`2========== DIAGNOSTIC SCRIPT FINISHED ==========")
-consoleLog("`eCek Discord apakah pesan dengan Mention ID " .. activeId .. " sudah masuk!")
+consoleLog("`eStatus Pengiriman Akhir: " .. tostring(sent))
