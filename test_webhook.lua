@@ -1,12 +1,14 @@
 -- =======================================================
--- GROWLAUNCHER MULTI-METHOD WEBHOOK TEST SCRIPT
+-- GROWLAUNCHER DISCORD WEBHOOK & DISCORD ID TEST SCRIPT
 -- =======================================================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1545485199834480712/DrfQI97OHYB0LSzDq6ke8sYZ-G182FI1dOa4GBMLEPaNVEHFGnm3SSi-6go0w9KtDGrB"
 local FALLBACK_DISCORD_ID = "991882071809200188"
 
 local function consoleLog(msg)
     local formatted = "`o[`3WH-Test`o] " .. msg
-    if logMessage then
+    if LogToConsole then
+        pcall(LogToConsole, formatted)
+    elseif logMessage then
         pcall(logMessage, formatted)
     elseif log then
         pcall(log, formatted)
@@ -16,41 +18,43 @@ local function consoleLog(msg)
     print("[WH-Test] " .. msg)
 end
 
-consoleLog("`2========== STARTING MULTI-METHOD TEST ==========")
+consoleLog("`2========== STARTING WEBHOOK & DISCORD ID TEST ==========")
 
--- 1. Discord ID
+-- 1. Test Discord ID Detection
 local rawId = (getDiscordID and getDiscordID()) or ""
 local activeId = rawId
 if not activeId or activeId == "123" or #activeId < 6 then
     activeId = FALLBACK_DISCORD_ID
+    consoleLog("`eNote: getDiscordID() returned '" .. tostring(rawId) .. "'. Fallback ID: `1" .. activeId)
+else
+    consoleLog("`2Active Discord ID: `1" .. tostring(activeId))
 end
-consoleLog("`2Active Discord ID: `1" .. tostring(activeId) .. " `o(Raw: " .. tostring(rawId) .. ")")
 local mention = "<@" .. activeId .. ">"
 
--- 2. Scan globals
+-- 2. Scan available global networking APIs
 local apis = {}
-for _, name in ipairs({"makeRequest", "MakeRequest", "sendWebhook", "SendWebhook", "webhook", "Webhook", "fetch", "runThread"}) do
+for _, name in ipairs({"makeRequest", "MakeRequest", "sendWebhook", "SendWebhook", "webhook", "Webhook", "fetch", "runThread", "LogToConsole"}) do
     if _G[name] ~= nil then
         table.insert(apis, name .. "(" .. type(_G[name]) .. ")")
     end
 end
-consoleLog("`9Available APIs: `2" .. (#apis > 0 and table.concat(apis, ", ") or "NONE"))
+consoleLog("`9APIs in _G: `2" .. (#apis > 0 and table.concat(apis, ", ") or "NONE"))
 
 -- 3. Prepare Payloads
 local headers = { ["Content-Type"] = "application/json" }
 
 local hookTable = {
     url = WEBHOOK_URL,
-    content = mention .. " `[Table Hook]` Test Berhasil!",
+    content = mention .. " Growlauncher Webhook Test (Table Method)!",
     username = "Growlauncher Tracker",
     avatar_url = "https://static.wikia.nocookie.net/growtopia/images/b/be/Operating_Table.png",
     embed = {
-        title = "🎉 Table Webhook Test Berhasil!",
-        description = "Discord ID: " .. activeId .. "\nMethod: Native Table API",
+        title = "🎉 Webhook Test Berhasil!",
+        description = "Discord ID: " .. activeId .. "\nStatus: OK",
         color = 65280,
         fields = {
-            { name = "Status", value = "SUCCESS", inline = true },
-            { name = "Mention", value = mention, inline = true }
+            { name = "Mention", value = mention, inline = true },
+            { name = "Client", value = "Growlauncher", inline = true }
         },
         footer = { text = "Auto Surg // Zama Store" }
     }
@@ -58,17 +62,17 @@ local hookTable = {
 
 local jsonPayload = string.format([[
 {
-  "content": "%s `[JSON Hook]` Test Berhasil!",
+  "content": "%s Growlauncher Webhook Test (JSON Method)!",
   "username": "Growlauncher Tracker",
   "avatar_url": "https://static.wikia.nocookie.net/growtopia/images/b/be/Operating_Table.png",
   "embeds": [
     {
-      "title": "🎉 JSON Webhook Test Berhasil!",
-      "description": "Discord ID: %s\nMethod: JSON Payload",
+      "title": "🎉 Webhook Test Berhasil!",
+      "description": "Discord ID: %s\nStatus: OK",
       "color": 16753920,
       "fields": [
-        { "name": "Status", "value": "SUCCESS", "inline": true },
-        { "name": "Mention", "value": "%s", "inline": true }
+        { "name": "Mention", value: "%s", inline = true },
+        { "name": "Client", value: "Growlauncher", inline = true }
       ],
       "footer": { "text": "Auto Surg // Zama Store" }
     }
@@ -76,72 +80,50 @@ local jsonPayload = string.format([[
 }
 ]], mention, activeId, mention)
 
--- METHOD 1: makeRequest (JSON)
+-- 4. Send via ALL Available Channels (NO SHORT-CIRCUIT)
+consoleLog("`9Sending via all available methods...")
+
+if MakeRequest then
+    local ok, res = pcall(MakeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
+    consoleLog("  MakeRequest: ok=" .. tostring(ok) .. ", res=" .. tostring(res))
+end
+
 if makeRequest then
-    consoleLog("`9[M1] Testing makeRequest (JSON)...")
-    local ok1, res1 = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
-    consoleLog("  makeRequest Result: ok=" .. tostring(ok1) .. ", res=" .. tostring(res1))
-    if not ok1 or res1 == false then
-        local ok1b, res1b = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload)
-        consoleLog("  makeRequest (no timeout): ok=" .. tostring(ok1b) .. ", res=" .. tostring(res1b))
-    end
-else
-    consoleLog("`4[M1] makeRequest NOT available")
+    local ok, res = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
+    consoleLog("  makeRequest: ok=" .. tostring(ok) .. ", res=" .. tostring(res))
 end
 
--- METHOD 2: webhook(table)
-if webhook then
-    consoleLog("`9[M2] Testing webhook(table)...")
-    local ok2, res2 = pcall(webhook, hookTable)
-    consoleLog("  webhook(table) Result: ok=" .. tostring(ok2) .. ", res=" .. tostring(res2))
-else
-    consoleLog("`4[M2] webhook NOT available")
-end
-
--- METHOD 3: sendWebhook(table) & sendWebhook(url, str)
 if sendWebhook then
-    consoleLog("`9[M3] Testing sendWebhook...")
-    local ok3a, res3a = pcall(sendWebhook, hookTable)
-    consoleLog("  sendWebhook(table) Result: ok=" .. tostring(ok3a) .. ", res=" .. tostring(res3a))
-    
-    local ok3b, res3b = pcall(sendWebhook, WEBHOOK_URL, jsonPayload)
-    consoleLog("  sendWebhook(url, str) Result: ok=" .. tostring(ok3b) .. ", res=" .. tostring(res3b))
-else
-    consoleLog("`4[M3] sendWebhook NOT available")
+    local okStr, resStr = pcall(sendWebhook, WEBHOOK_URL, jsonPayload)
+    consoleLog("  sendWebhook(url, str): ok=" .. tostring(okStr) .. ", res=" .. tostring(resStr))
+    local okTbl, resTbl = pcall(sendWebhook, hookTable)
+    consoleLog("  sendWebhook(table): ok=" .. tostring(okTbl) .. ", res=" .. tostring(resTbl))
 end
 
--- METHOD 4: SendWebhook (Capitalized)
 if SendWebhook then
-    consoleLog("`9[M4] Testing SendWebhook (Capitalized)...")
-    local ok4a, res4a = pcall(SendWebhook, hookTable)
-    consoleLog("  SendWebhook(table) Result: ok=" .. tostring(ok4a) .. ", res=" .. tostring(res4a))
-    local ok4b, res4b = pcall(SendWebhook, WEBHOOK_URL, jsonPayload)
-    consoleLog("  SendWebhook(url, str) Result: ok=" .. tostring(ok4b) .. ", res=" .. tostring(res4b))
+    local okStr, resStr = pcall(SendWebhook, WEBHOOK_URL, jsonPayload)
+    consoleLog("  SendWebhook(url, str): ok=" .. tostring(okStr))
+    pcall(SendWebhook, hookTable)
 end
 
--- METHOD 5: fetch POST
-if fetch then
-    consoleLog("`9[M5] Testing fetch (POST)...")
-    local ok5, res5 = pcall(fetch, WEBHOOK_URL, {
-        method = "POST",
-        headers = headers,
-        body = jsonPayload
-    })
-    consoleLog("  fetch(options) Result: ok=" .. tostring(ok5) .. ", res=" .. tostring(res5))
+if webhook then
+    local okTbl, resTbl = pcall(webhook, hookTable)
+    consoleLog("  webhook(table): ok=" .. tostring(okTbl) .. ", res=" .. tostring(resTbl))
 end
 
--- METHOD 6: runThread Background Execution
+-- Also send inside runThread
 if runThread then
-    consoleLog("`9[M6] Testing inside runThread...")
     runThread(function()
-        consoleLog("`e  runThread started...")
+        consoleLog("`e  Inside runThread execution...")
+        if MakeRequest then
+            pcall(MakeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
+        end
         if makeRequest then
-            local ok, res = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
-            consoleLog("  runThread makeRequest: ok=" .. tostring(ok))
+            pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
         end
         if sendWebhook then
-            pcall(sendWebhook, hookTable)
             pcall(sendWebhook, WEBHOOK_URL, jsonPayload)
+            pcall(sendWebhook, hookTable)
         end
         if webhook then
             pcall(webhook, hookTable)
@@ -150,5 +132,5 @@ if runThread then
     end)
 end
 
-consoleLog("`2========== TEST FINISHED ==========")
-consoleLog("`eCek Discord & infokan pesan [M1] - [M6] apa saja yang muncul di konsol!")
+consoleLog("`2========== TEST SCRIPT COMPLETED ==========")
+consoleLog("`eSilakan cek Discord channel dan periksa log di atas.")
