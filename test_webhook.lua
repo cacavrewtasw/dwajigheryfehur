@@ -1,5 +1,5 @@
 -- =======================================================
--- GROWLAUNCHER DISCORD WEBHOOK & DISCORD ID TEST SCRIPT
+-- GROWLAUNCHER MULTI-METHOD WEBHOOK TEST SCRIPT
 -- =======================================================
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1545485199834480712/DrfQI97OHYB0LSzDq6ke8sYZ-G182FI1dOa4GBMLEPaNVEHFGnm3SSi-6go0w9KtDGrB"
 local FALLBACK_DISCORD_ID = "991882071809200188"
@@ -16,148 +16,139 @@ local function consoleLog(msg)
     print("[WH-Test] " .. msg)
 end
 
-consoleLog("`2========== STARTING WEBHOOK & DISCORD ID TEST ==========")
+consoleLog("`2========== STARTING MULTI-METHOD TEST ==========")
 
--- 1. Test Discord ID Detection
-consoleLog("`9[1] Testing Discord ID Detection...")
-local rawDiscordId = nil
-local detectedVia = "none"
-
-if getDiscordID then
-    local ok, id = pcall(getDiscordID)
-    if ok and id and tostring(id):gsub("%s+", "") ~= "" then
-        rawDiscordId = tostring(id):gsub("%s+", "")
-        detectedVia = "getDiscordID()"
-        consoleLog("`2  getDiscordID() returned: `1" .. rawDiscordId)
-    end
-end
-
-if not rawDiscordId and GetDiscordID then
-    local ok, id = pcall(GetDiscordID)
-    if ok and id and tostring(id):gsub("%s+", "") ~= "" then
-        rawDiscordId = tostring(id):gsub("%s+", "")
-        detectedVia = "GetDiscordID()"
-        consoleLog("`2  GetDiscordID() returned: `1" .. rawDiscordId)
-    end
-end
-
-local activeId = rawDiscordId
+-- 1. Discord ID
+local rawId = (getDiscordID and getDiscordID()) or ""
+local activeId = rawId
 if not activeId or activeId == "123" or #activeId < 6 then
-    consoleLog("`e  Note: Discord ID is '" .. tostring(activeId) .. "'. Using Fallback ID: `1" .. FALLBACK_DISCORD_ID)
     activeId = FALLBACK_DISCORD_ID
-else
-    consoleLog("`2>>> ACTIVE DISCORD ID: `1" .. activeId .. " `2(Source: " .. detectedVia .. ")")
 end
+consoleLog("`2Active Discord ID: `1" .. tostring(activeId) .. " `o(Raw: " .. tostring(rawId) .. ")")
+local mention = "<@" .. activeId .. ">"
 
-local mentionText = "<@" .. activeId .. ">"
-
--- 2. Scan available global networking APIs
-consoleLog("`9[2] Scanning Global Networking Functions in _G...")
-local candidateNames = {
-    "webhook", "Webhook", "sendWebhook", "SendWebhook",
-    "makeRequest", "MakeRequest", "httpRequest", "HttpRequest",
-    "fetch", "Fetch", "runThread"
-}
-
-for _, name in ipairs(candidateNames) do
-    local val = _G[name]
-    if val ~= nil then
-        consoleLog("`2  FOUND: `1" .. name .. " `o(`e" .. type(val) .. "`o)")
+-- 2. Scan globals
+local apis = {}
+for _, name in ipairs({"makeRequest", "MakeRequest", "sendWebhook", "SendWebhook", "webhook", "Webhook", "fetch", "runThread"}) do
+    if _G[name] ~= nil then
+        table.insert(apis, name .. "(" .. type(_G[name]) .. ")")
     end
 end
+consoleLog("`9Available APIs: `2" .. (#apis > 0 and table.concat(apis, ", ") or "NONE"))
 
--- 3. Prepare Table Payload (as documented in Growlauncher)
+-- 3. Prepare Payloads
+local headers = { ["Content-Type"] = "application/json" }
+
 local hookTable = {
     url = WEBHOOK_URL,
-    content = mentionText,
-    username = "Growlauncher Diagnostic",
+    content = mention .. " `[Table Hook]` Test Berhasil!",
+    username = "Growlauncher Tracker",
     avatar_url = "https://static.wikia.nocookie.net/growtopia/images/b/be/Operating_Table.png",
     embed = {
-        title = "🎉 Test Webhook Growlauncher Berhasil!",
-        description = "# Webhook Test\n**Discord ID:** " .. activeId .. "\n**Status:** Berhasil Terkirim!",
+        title = "🎉 Table Webhook Test Berhasil!",
+        description = "Discord ID: " .. activeId .. "\nMethod: Native Table API",
         color = 65280,
         fields = {
-            { name = "👤 Mention ID", value = mentionText, inline = true },
-            { name = "🎮 Client", value = "Growlauncher", inline = true }
+            { name = "Status", value = "SUCCESS", inline = true },
+            { name = "Mention", value = mention, inline = true }
         },
-        footer = {
-            text = "Zama Store // Diagnostic Tool"
-        }
+        footer = { text = "Auto Surg // Zama Store" }
     }
 }
 
--- 4. Test Table-based Webhook functions
-consoleLog("`9[3] Testing Table-based Webhook APIs...")
-local sent = false
+local jsonPayload = string.format([[
+{
+  "content": "%s `[JSON Hook]` Test Berhasil!",
+  "username": "Growlauncher Tracker",
+  "avatar_url": "https://static.wikia.nocookie.net/growtopia/images/b/be/Operating_Table.png",
+  "embeds": [
+    {
+      "title": "🎉 JSON Webhook Test Berhasil!",
+      "description": "Discord ID: %s\nMethod: JSON Payload",
+      "color": 16753920,
+      "fields": [
+        { "name": "Status", "value": "SUCCESS", "inline": true },
+        { "name": "Mention", "value": "%s", "inline": true }
+      ],
+      "footer": { "text": "Auto Surg // Zama Store" }
+    }
+  ]
+}
+]], mention, activeId, mention)
 
--- Test webhook(table)
-if not sent and webhook then
-    local ok, res = pcall(webhook, hookTable)
-    consoleLog("  Attempt webhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then sent = true end
+-- METHOD 1: makeRequest (JSON)
+if makeRequest then
+    consoleLog("`9[M1] Testing makeRequest (JSON)...")
+    local ok1, res1 = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
+    consoleLog("  makeRequest Result: ok=" .. tostring(ok1) .. ", res=" .. tostring(res1))
+    if not ok1 or res1 == false then
+        local ok1b, res1b = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload)
+        consoleLog("  makeRequest (no timeout): ok=" .. tostring(ok1b) .. ", res=" .. tostring(res1b))
+    end
+else
+    consoleLog("`4[M1] makeRequest NOT available")
 end
 
--- Test sendWebhook(table)
-if not sent and sendWebhook then
-    local ok, res = pcall(sendWebhook, hookTable)
-    consoleLog("  Attempt sendWebhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then sent = true end
+-- METHOD 2: webhook(table)
+if webhook then
+    consoleLog("`9[M2] Testing webhook(table)...")
+    local ok2, res2 = pcall(webhook, hookTable)
+    consoleLog("  webhook(table) Result: ok=" .. tostring(ok2) .. ", res=" .. tostring(res2))
+else
+    consoleLog("`4[M2] webhook NOT available")
 end
 
--- Test SendWebhook(table)
-if not sent and SendWebhook then
-    local ok, res = pcall(SendWebhook, hookTable)
-    consoleLog("  Attempt SendWebhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then sent = true end
-end
-
--- Test Webhook(table)
-if not sent and Webhook then
-    local ok, res = pcall(Webhook, hookTable)
-    consoleLog("  Attempt Webhook(table): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-    if ok then sent = true end
-end
-
--- 5. Fallback to String/JSON if table-based didn't succeed
-if not sent then
-    consoleLog("`9[4] Table method not sent, trying String/JSON fallbacks...")
-    local simplePayload = '{"content":"' .. mentionText .. ' Growlauncher Webhook Test (JSON fallback)"}'
+-- METHOD 3: sendWebhook(table) & sendWebhook(url, str)
+if sendWebhook then
+    consoleLog("`9[M3] Testing sendWebhook...")
+    local ok3a, res3a = pcall(sendWebhook, hookTable)
+    consoleLog("  sendWebhook(table) Result: ok=" .. tostring(ok3a) .. ", res=" .. tostring(res3a))
     
-    if makeRequest then
-        local headers = { ["Content-Type"] = "application/json" }
-        local ok, res = pcall(makeRequest, WEBHOOK_URL, "POST", headers, simplePayload, 8000)
-        consoleLog("  Attempt makeRequest: ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-        if ok then sent = true end
-    end
-
-    if not sent and sendWebhook then
-        local ok, res = pcall(sendWebhook, WEBHOOK_URL, simplePayload)
-        consoleLog("  Attempt sendWebhook(url, payload): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-        if ok then sent = true end
-    end
-
-    if not sent and fetch then
-        local ok, res = pcall(fetch, WEBHOOK_URL, {
-            method = "POST",
-            headers = { ["Content-Type"] = "application/json" },
-            body = simplePayload
-        })
-        consoleLog("  Attempt fetch(url, options): ok=" .. tostring(ok) .. ", res=" .. tostring(res))
-        if ok then sent = true end
-    end
+    local ok3b, res3b = pcall(sendWebhook, WEBHOOK_URL, jsonPayload)
+    consoleLog("  sendWebhook(url, str) Result: ok=" .. tostring(ok3b) .. ", res=" .. tostring(res3b))
+else
+    consoleLog("`4[M3] sendWebhook NOT available")
 end
 
--- 6. Also try inside runThread
+-- METHOD 4: SendWebhook (Capitalized)
+if SendWebhook then
+    consoleLog("`9[M4] Testing SendWebhook (Capitalized)...")
+    local ok4a, res4a = pcall(SendWebhook, hookTable)
+    consoleLog("  SendWebhook(table) Result: ok=" .. tostring(ok4a) .. ", res=" .. tostring(res4a))
+    local ok4b, res4b = pcall(SendWebhook, WEBHOOK_URL, jsonPayload)
+    consoleLog("  SendWebhook(url, str) Result: ok=" .. tostring(ok4b) .. ", res=" .. tostring(res4b))
+end
+
+-- METHOD 5: fetch POST
+if fetch then
+    consoleLog("`9[M5] Testing fetch (POST)...")
+    local ok5, res5 = pcall(fetch, WEBHOOK_URL, {
+        method = "POST",
+        headers = headers,
+        body = jsonPayload
+    })
+    consoleLog("  fetch(options) Result: ok=" .. tostring(ok5) .. ", res=" .. tostring(res5))
+end
+
+-- METHOD 6: runThread Background Execution
 if runThread then
+    consoleLog("`9[M6] Testing inside runThread...")
     runThread(function()
-        consoleLog("`e[5] Testing inside runThread...")
-        local hookFn = webhook or Webhook or sendWebhook or SendWebhook
-        if hookFn then
-            local okT, resT = pcall(hookFn, hookTable)
-            consoleLog("  runThread hookFn(table): ok=" .. tostring(okT) .. ", res=" .. tostring(resT))
+        consoleLog("`e  runThread started...")
+        if makeRequest then
+            local ok, res = pcall(makeRequest, WEBHOOK_URL, "POST", headers, jsonPayload, 8000)
+            consoleLog("  runThread makeRequest: ok=" .. tostring(ok))
         end
+        if sendWebhook then
+            pcall(sendWebhook, hookTable)
+            pcall(sendWebhook, WEBHOOK_URL, jsonPayload)
+        end
+        if webhook then
+            pcall(webhook, hookTable)
+        end
+        consoleLog("`e  runThread finished.")
     end)
 end
 
-consoleLog("`2========== DIAGNOSTIC SCRIPT FINISHED ==========")
-consoleLog("`eStatus Pengiriman Akhir: " .. tostring(sent))
+consoleLog("`2========== TEST FINISHED ==========")
+consoleLog("`eCek Discord & infokan pesan [M1] - [M6] apa saja yang muncul di konsol!")
